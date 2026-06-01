@@ -88,8 +88,10 @@ class GenericParser(BaseParser):
             for table in self.extract_tables_from_page(page_num):
                 if not table:
                     continue
-                txns = self._parse_table(table, year_hint)
-                all_txns.extend(txns)
+                parsed = self._parse_table(table, year_hint)
+                for tx in parsed:
+                    tx.source_page = page_num + 1
+                all_txns.extend(parsed)
 
         return all_txns
 

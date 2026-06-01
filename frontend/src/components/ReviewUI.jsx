@@ -548,6 +548,72 @@ const css = `
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── QBO preview panel ────────────────────────────────────────── */
+  .qbo-preview {
+    border-top: 1px solid var(--border);
+    background: var(--ink-3);
+    flex-shrink: 0;
+    height: 168px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .qbo-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .qbo-preview-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .qbo-preview-fitid {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--subtle);
+    background: var(--ink-2);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+  }
+  .qbo-preview-close {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0 2px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .qbo-preview-close:hover { color: var(--white); }
+  .qbo-code {
+    padding: 8px 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.75;
+    overflow: auto;
+    flex: 1;
+    white-space: pre;
+  }
+  .qbo-tag  { color: var(--blue); }
+  .qbo-val  { color: var(--green); }
+  .qbo-val-neg { color: var(--red); }
+  .qbo-val-neutral { color: var(--white-2); }
+
+  /* hover highlight on PDF text layer */
+  .pdf-page-wrap.hover-highlight { outline: 2px solid var(--blue); outline-offset: 2px; }
 `;
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
@@ -575,37 +641,21 @@ const flagReasons = (tx) => {
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-// ─── SAMPLE DATA (replace with API response) ─────────────────────────────
-const SAMPLE_TRANSACTIONS = [
-  { id: uid(), date: "2024-01-03", description: "DIRECT DEPOSIT – FIFTH THIRD BANK", amount: "3200.00",  balance: "7450.00", type: "CREDIT"  },
-  { id: uid(), date: "2024-01-04", description: "AMAZON.COM*2K4J8",                  amount: "-89.99",   balance: "7360.01", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-05", description: "WHOLEFDS MKT #10452",               amount: "-67.43",   balance: "7292.58", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-07", description: "NETFLIX.COM 866-579-7172",           amount: "-15.49",   balance: "7277.09", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-08", description: "SHELL OIL 12345678",                amount: "-54.20",   balance: "7222.89", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-09", description: "CHIPOTLE 2847",                      amount: "-14.75",   balance: "7208.14", type: "DEBIT",  _balanceDelta: 15.01 },
-  { id: uid(), date: "2024-01-10", description: "ATM WITHDRAWAL CHASE",               amount: "-200.00",  balance: "7008.14", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-11", description: "SPOTIFY USA",                        amount: "-9.99",    balance: "6998.15", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-12", description: "WALMART SUPERCENTER #4872",          amount: "-134.22",  balance: "6863.93", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-14", description: "VENMO PAYMENT",                      amount: "-250.00",  balance: "6613.93", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-15", description: "APPLE.COM/BILL",                     amount: "-14.99",   balance: "6598.94", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-17", description: "DIRECT DEPOSIT – FIFTH THIRD BANK", amount: "3200.00",  balance: "9755.07", type: "CREDIT"  },
-  { id: uid(), date: "2024-01-18", description: "DUKE ENERGY CORP PAYMENT",           amount: "-142.00",  balance: "9613.07", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-20", description: "UBER EATS",                          amount: "-32.45",   balance: "9230.62", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-22", description: "ZELLE PAYMENT TO JOHN SMITH",        amount: "-150.00",  balance: "8992.99", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-26", description: "ZELLE FROM MIKE JOHNSON",            amount: "200.00",   balance: "9105.75", type: "CREDIT"  },
-  { id: uid(), date: "2024-01-28", description: "INTEREST EARNED",                    amount: "3.24",     balance: "9094.00", type: "OTHER",  },
-  { id: uid(), date: "2024-01-29", description: "PLANET FITNESS",                     amount: "-24.99",   balance: "9069.01", type: "DEBIT"   },
-  { id: uid(), date: "2024-01-30", description: "GRUBHUB",                            amount: "-28.50",   balance: "9040.51", type: "DEBIT"   },
-];
-
-const SAMPLE_META = {
-  bank: "JPMorgan Chase",
-  account_id: "xxxx1234",
-  statement_start: "2024-01-01",
-  statement_end: "2024-01-31",
-  closing_balance: 9040.51,
-  warnings: ["Row 6: balance delta mismatch — check Chipotle amount", "Row 17: Interest classified as OTHER — verify type"],
+// Build the list of OFX field pairs for a transaction
+const buildOFXFields = (tx) => {
+  const dtposted = (tx.date || "").replace(/-/g, "") + "120000[0:UTC]";
+  const amount   = parseFloat(tx.amount || 0).toFixed(2);
+  const fitId    = tx.fit_id || `${(tx.date || "").replace(/-/g, "")}-pending`;
+  return [
+    ["TRNTYPE",  tx.type  || "OTHER"],
+    ["DTPOSTED", dtposted],
+    ["TRNAMT",   amount],
+    ["FITID",    fitId],
+    ["NAME",     tx.description || ""],
+    ...(tx.memo ? [["MEMO", tx.memo]] : []),
+  ];
 };
+
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -657,19 +707,52 @@ function AddRowForm({ onAdd }) {
   );
 }
 
-function ExportModal({ transactions, onClose }) {
-  const [fmt, setFmt] = useState("ofx");
+function ExportModal({ transactions, meta, onClose }) {
+  const [fmt,       setFmt]       = useState("ofx");
+  const [exporting, setExporting] = useState(false);
+  const [error,     setError]     = useState(null);
   const active = transactions.filter(t => !t._deleted);
-  const handleExport = () => {
-    // In production: POST to /api/export with transactions + format
-    const data = JSON.stringify({ format: fmt, transactions: active }, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `export.${fmt}`; a.click();
-    URL.revokeObjectURL(url);
-    onClose();
+
+  const handleExport = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          format:          fmt,
+          bank:            meta?.bank || "Unknown",
+          account_id:      meta?.account_id || "unknown",
+          statement_start: meta?.statement_start,
+          statement_end:   meta?.statement_end,
+          closing_balance: meta?.closing_balance,
+          transactions: active.map(t => ({
+            date:        t.date,
+            description: t.description,
+            amount:      parseFloat(t.amount),
+            balance:     t.balance ? parseFloat(t.balance) : null,
+            type:        t.type,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Export failed" }));
+        throw new Error(err.detail || "Export failed");
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `export.${fmt}`; a.click();
+      URL.revokeObjectURL(url);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExporting(false);
+    }
   };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -687,9 +770,16 @@ function ExportModal({ transactions, onClose }) {
             </div>
           ))}
         </div>
+        {error && (
+          <div style={{ color: "var(--red)", fontSize: 12, marginBottom: 12, fontFamily: "var(--mono)" }}>
+            ⚠ {error}
+          </div>
+        )}
         <div className="modal-actions">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleExport}>Download {fmt.toUpperCase()}</button>
+          <button className="btn" onClick={onClose} disabled={exporting}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleExport} disabled={exporting}>
+            {exporting ? "Exporting…" : `Download ${fmt.toUpperCase()}`}
+          </button>
         </div>
       </div>
     </div>
@@ -709,8 +799,10 @@ export default function ReviewUI({
   const [numPages,      setNumPages]      = useState(null);
   const [currentPage,   setCurrentPage]   = useState(1);
   const [pdfScale,      setPdfScale]      = useState(0.85);
-  const [transactions,  setTransactions]  = useState(txProp || SAMPLE_TRANSACTIONS);
-  const [meta,          setMeta]          = useState(metaProp || SAMPLE_META);
+  const [transactions,  setTransactions]  = useState(txProp || []);
+  const [meta,          setMeta]          = useState(metaProp || {});
+  const [loading,       setLoading]       = useState(false);
+  const [apiError,      setApiError]      = useState(null);
   const [selectedId,    setSelectedId]    = useState(null);
   const [filter,        setFilter]        = useState("all");   // all | flagged | debit | credit
   const [search,        setSearch]        = useState("");
@@ -719,7 +811,9 @@ export default function ReviewUI({
   const [showAddRow,    setShowAddRow]    = useState(false);
   const [showExport,    setShowExport]    = useState(false);
   const [isDragOver,    setIsDragOver]    = useState(false);
+  const [hoveredId,     setHoveredId]     = useState(null);
   const fileInputRef = useRef(null);
+  const pageRefs     = useRef({});
 
   // ── Inject styles once ─────────────────────────────────────────
   useEffect(() => {
@@ -732,12 +826,74 @@ export default function ReviewUI({
     return () => document.getElementById(id)?.remove();
   }, []);
 
+  // ── Scroll PDF to the active page when it changes via hover ────
+  useEffect(() => {
+    const el = pageRefs.current[currentPage];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [currentPage]);
+
+  // ── Highlight text in the PDF that matches the hovered tx ─────
+  const customTextRenderer = useCallback(({ str }) => {
+    if (!hoveredId) return str;
+    const tx = transactions.find(t => t.id === hoveredId);
+    if (!tx || !str) return str;
+
+    // Match date: try "M/D", "MM/DD", with/without leading zeros
+    const month = parseInt((tx.date || "").slice(5, 7), 10);
+    const day   = parseInt((tx.date || "").slice(8, 10), 10);
+    const dateVariants = [
+      `${month}/${day}`, `0${month}/${day}`, `${month}/0${day}`, `0${month}/0${day}`,
+    ];
+    const isDate = dateVariants.some(v => str === v || str.startsWith(v + "/"));
+
+    // Match absolute amount (e.g. "1,234.56" or "1234.56")
+    const absAmt  = Math.abs(parseFloat(tx.amount || 0));
+    const amtFmt  = absAmt.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const amtFixed = absAmt.toFixed(2);
+    const isAmount = str === amtFmt || str === amtFixed || str.endsWith(amtFmt) || str.endsWith(amtFixed);
+
+    if (isDate || isAmount) {
+      return `<mark style="background:rgba(88,166,255,0.38);border-radius:2px;padding:0 1px">${str}</mark>`;
+    }
+    return str;
+  }, [hoveredId, transactions]);
+
   // ── PDF handlers ───────────────────────────────────────────────
-  const handleFile = useCallback((file) => {
+  const handleFile = useCallback(async (file) => {
     if (!file || file.type !== "application/pdf") return;
     setPdfFile(file);
     setPdfName(file.name);
     setCurrentPage(1);
+    setTransactions([]);
+    setMeta({});
+    setApiError(null);
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/preview", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Failed to parse PDF" }));
+        throw new Error(err.detail || "Failed to parse PDF");
+      }
+      const data = await res.json();
+      setMeta(data);
+      setTransactions(
+        data.transactions.map(tx => ({
+          ...tx,
+          id:          uid(),
+          amount:      String(tx.amount),
+          balance:     tx.balance != null ? String(tx.balance) : "",
+          fit_id:      tx.fit_id  || null,
+          source_page: tx.source_page || null,
+        }))
+      );
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const onDrop = (e) => {
@@ -879,8 +1035,21 @@ export default function ReviewUI({
                 error={<div style={{ color: "var(--red)", padding: 24, fontSize: 12 }}>Failed to load PDF. Ensure it is a valid bank statement.</div>}
               >
                 {Array.from({ length: numPages || 0 }, (_, i) => i + 1).map(page => (
-                  <div key={page} className={`pdf-page-wrap ${page === currentPage && selectedId ? "highlighted" : ""}`}>
-                    <Page pageNumber={page} scale={pdfScale} renderTextLayer renderAnnotationLayer />
+                  <div
+                    key={page}
+                    ref={el => { pageRefs.current[page] = el; }}
+                    className={`pdf-page-wrap ${
+                      page === currentPage && selectedId ? "highlighted" :
+                      page === currentPage && hoveredId  ? "hover-highlight" : ""
+                    }`}
+                  >
+                    <Page
+                      pageNumber={page}
+                      scale={pdfScale}
+                      renderTextLayer
+                      renderAnnotationLayer
+                      customTextRenderer={customTextRenderer}
+                    />
                   </div>
                 ))}
               </Document>
@@ -925,6 +1094,22 @@ export default function ReviewUI({
           </div>
 
           <div className="table-scroll">
+            {loading ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>
+                <div style={{ width: 20, height: 20, border: "2px solid var(--border)", borderTopColor: "var(--blue)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                Parsing PDF…
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : apiError ? (
+              <div style={{ padding: 28, color: "var(--red)", fontFamily: "var(--mono)", fontSize: 12 }}>
+                <div style={{ marginBottom: 8, fontWeight: 500 }}>⚠ Parse error</div>
+                <div style={{ color: "var(--white-2)", lineHeight: 1.5 }}>{apiError}</div>
+              </div>
+            ) : !pdfFile ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>
+                Upload a PDF to get started
+              </div>
+            ) : (
             <table>
               <thead>
                 <tr>
@@ -949,7 +1134,16 @@ export default function ReviewUI({
                   ].filter(Boolean).join(" ");
 
                   return (
-                    <tr key={tx.id} className={rowCls} onClick={() => setSelectedId(id => id === tx.id ? null : tx.id)}>
+                    <tr
+                      key={tx.id}
+                      className={rowCls}
+                      onClick={() => setSelectedId(id => id === tx.id ? null : tx.id)}
+                      onMouseEnter={() => {
+                        setHoveredId(tx.id);
+                        if (tx.source_page) setCurrentPage(tx.source_page);
+                      }}
+                      onMouseLeave={() => setHoveredId(null)}
+                    >
                       {/* status dot */}
                       <td onClick={e => e.stopPropagation()} style={{ paddingLeft: 14 }}>
                         <StatusDot tx={tx} deleted={tx._deleted} />
@@ -1022,10 +1216,47 @@ export default function ReviewUI({
                 )}
               </tbody>
             </table>
+            )}
           </div>
 
           {/* Add row form */}
           {showAddRow && <AddRowForm onAdd={(tx) => { addTx(tx); setShowAddRow(false); }} />}
+
+          {/* QBO preview panel — shown when a row is selected */}
+          {selectedId && (() => {
+            const tx = transactions.find(t => t.id === selectedId);
+            if (!tx) return null;
+            const fields  = buildOFXFields(tx);
+            const isNeg   = parseFloat(tx.amount || 0) < 0;
+            return (
+              <div className="qbo-preview">
+                <div className="qbo-preview-header">
+                  <span className="qbo-preview-label">QBO Preview</span>
+                  <span className="qbo-preview-fitid">{tx.fit_id || "FITID pending"}</span>
+                  <span className="qbo-preview-close" onClick={() => setSelectedId(null)} title="Close">×</span>
+                </div>
+                <div className="qbo-code">
+                  <span className="qbo-tag">{"<STMTTRN>"}</span>{"\n"}
+                  {fields.map(([tag, val]) => {
+                    const valCls =
+                      tag === "TRNAMT"   ? (isNeg ? "qbo-val-neg" : "qbo-val") :
+                      tag === "TRNTYPE"  ? (isNeg ? "qbo-val-neg" : "qbo-val") :
+                      tag === "DTPOSTED" ? "qbo-val-neutral" : "qbo-val";
+                    return (
+                      <React.Fragment key={tag}>
+                        {"  "}
+                        <span className="qbo-tag">{`<${tag}>`}</span>
+                        <span className={valCls}>{val}</span>
+                        <span className="qbo-tag">{`</${tag}>`}</span>
+                        {"\n"}
+                      </React.Fragment>
+                    );
+                  })}
+                  <span className="qbo-tag">{"</STMTTRN>"}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Footer summary */}
           <div className="footer">
@@ -1051,7 +1282,7 @@ export default function ReviewUI({
 
       {/* Export modal */}
       {showExport && (
-        <ExportModal transactions={transactions} onClose={() => setShowExport(false)} />
+        <ExportModal transactions={transactions} meta={meta} onClose={() => setShowExport(false)} />
       )}
     </div>
   );

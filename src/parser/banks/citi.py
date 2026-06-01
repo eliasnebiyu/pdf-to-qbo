@@ -164,6 +164,8 @@ class CitiParser(BaseParser):
                     parsed = self._parse_cc_table(table)
                 else:
                     parsed = self._parse_chk_table(table)
+                for tx in parsed:
+                    tx.source_page = page_num + 1
                 txns.extend(parsed)
         return txns
 

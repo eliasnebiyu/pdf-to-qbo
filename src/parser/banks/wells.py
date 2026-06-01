@@ -51,7 +51,10 @@ class WellsFargoParser(BaseParser):
 
         for page_num in range(self.page_count):
             for table in self.extract_tables_from_page(page_num):
-                txns.extend(self._parse_wf_table(table, year))
+                parsed = self._parse_wf_table(table, year)
+                for tx in parsed:
+                    tx.source_page = page_num + 1
+                txns.extend(parsed)
 
         if not txns:
             self.warn("Wells Fargo: no table transactions found, trying line parse.")

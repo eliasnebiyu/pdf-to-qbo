@@ -80,6 +80,8 @@ class ChaseParser(BaseParser):
         for page_num in range(self.page_count):
             for table in self.extract_tables_from_page(page_num):
                 parsed = self._parse_chase_table(table)
+                for tx in parsed:
+                    tx.source_page = page_num + 1
                 txns.extend(parsed)
         return txns
 

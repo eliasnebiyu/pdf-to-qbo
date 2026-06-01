@@ -57,7 +57,10 @@ class BofAParser(BaseParser):
         txns = []
         for page_num in range(self.page_count):
             for table in self.extract_tables_from_page(page_num):
-                txns.extend(self._parse_bofa_table(table))
+                parsed = self._parse_bofa_table(table)
+                for tx in parsed:
+                    tx.source_page = page_num + 1
+                txns.extend(parsed)
         if txns:
             return txns
 

@@ -10,21 +10,32 @@ Deploy on Railway:
   railway init
   railway up
 """
-import io
 import tempfile
+from datetime import date as date_type
+from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
+from pydantic import BaseModel
 
 from src.parser import detect_and_parse, list_supported_banks
 from src.exporter import to_ofx, to_csv
+from src.models import Transaction, BankAccount, ParsedStatement, TransactionType
 
 app = FastAPI(
     title="PDF to QBO Converter",
     description="Convert bank statement PDFs to QuickBooks-compatible OFX/QFX/CSV",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── Health check (Railway requires this) ─────────────────────────────────────
@@ -165,8 +176,82 @@ async def preview(
                 "amount":      float(tx.amount),
                 "balance":     float(tx.balance) if tx.balance else None,
                 "type":        tx.tx_type,
+                "fit_id":      tx.fit_id,
+                "source_page": tx.source_page,
             }
-            for tx in statement.transactions[:50]  # preview: first 50
+            for tx in statement.transactions
         ],
-        "truncated": statement.transaction_count > 50,
     }
+
+
+# ── Export edited transactions ────────────────────────────────────────────────
+
+class ExportTransaction(BaseModel):
+    date: str
+    description: str
+    amount: float
+    balance: Optional[float] = None
+    type: str = "OTHER"
+
+class ExportRequest(BaseModel):
+    format: Literal["ofx", "qfx", "csv"] = "ofx"
+    bank: str = "Unknown"
+    account_id: str = "unknown"
+    statement_start: Optional[str] = None
+    statement_end: Optional[str] = None
+    closing_balance: Optional[float] = None
+    transactions: List[ExportTransaction]
+
+
+@app.post("/export")
+async def export_transactions(req: ExportRequest):
+    """
+    Accept reviewed/edited transactions as JSON and return an OFX/QFX/CSV file.
+    Used by the review UI after the user has corrected any flagged transactions.
+    """
+    try:
+        txns = []
+        for tx in req.transactions:
+            try:
+                tx_type = TransactionType(tx.type)
+            except ValueError:
+                tx_type = TransactionType.OTHER
+            txns.append(Transaction(
+                date=date_type.fromisoformat(tx.date),
+                description=tx.description,
+                amount=Decimal(str(tx.amount)),
+                balance=Decimal(str(tx.balance)) if tx.balance is not None else None,
+                tx_type=tx_type,
+            ))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Invalid transaction data: {e}")
+
+    account = BankAccount(
+        bank_name=req.bank,
+        account_id=req.account_id,
+        statement_start=date_type.fromisoformat(req.statement_start) if req.statement_start else None,
+        statement_end=date_type.fromisoformat(req.statement_end) if req.statement_end else None,
+        closing_balance=Decimal(str(req.closing_balance)) if req.closing_balance is not None else None,
+    )
+
+    statement = ParsedStatement(account=account, transactions=txns)
+    statement.assign_fit_ids()
+
+    fmt = req.format.lower()
+    if fmt in ("ofx", "qfx"):
+        content    = to_ofx(statement, is_qfx=(fmt == "qfx"))
+        media_type = "application/x-ofx"
+        filename   = f"export.{fmt}"
+    else:
+        content    = to_csv(statement)
+        media_type = "text/csv"
+        filename   = "export.csv"
+
+    return Response(
+        content=content.encode("ascii", errors="replace"),
+        media_type=media_type,
+        headers={
+            "Content-Disposition":  f'attachment; filename="{filename}"',
+            "X-Transaction-Count":  str(len(txns)),
+        },
+    )
