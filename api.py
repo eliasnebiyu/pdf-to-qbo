@@ -10,6 +10,7 @@ Deploy on Railway:
   railway init
   railway up
 """
+import os
 import tempfile
 from datetime import date as date_type
 from decimal import Decimal
@@ -31,11 +32,35 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Default: localhost dev servers.
+# Production: set ALLOWED_ORIGINS=https://your-frontend.com in Railway env vars.
+# Multiple origins: comma-separated  e.g. "https://app.example.com,https://www.example.com"
+_default_origins = [
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "http://localhost:3000",
+]
+_env_origins = os.getenv("ALLOWED_ORIGINS", "")
+_allowed_origins: list[str] = (
+    [o.strip() for o in _env_origins.split(",") if o.strip()]
+    if _env_origins
+    else _default_origins
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-Transaction-Count",
+        "X-Bank-Name",
+        "X-Parser-Used",
+        "X-Warnings",
+        "Content-Disposition",
+    ],
 )
 
 # ── Health check (Railway requires this) ─────────────────────────────────────

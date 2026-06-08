@@ -6,6 +6,15 @@ bank statement import. QFX is Quicken's variant — structurally
 identical, different header value. Both are accepted by QBO.
 
 Spec reference: OFX 1.02 (SGML, not XML — the version QBO still uses)
+
+Account-type routing
+--------------------
+- Checking / Savings / Money Market → BANKMSGSRSV1 / STMTRS / BANKACCTFROM
+- Credit Card                       → CREDITCARDMSGSRSV1 / CCSTMTRS / CCACCTFROM
+
+QBO requires the credit-card envelope for accounts set up as "Credit Card"
+in the chart of accounts; using the bank envelope will cause a mismatch and
+the import will fail or create a duplicate account.
 """
 from __future__ import annotations
 from datetime import datetime, timezone
@@ -70,9 +79,19 @@ def _tx_block(tx: Transaction, index: int) -> str:
     return "\n".join(lines)
 
 
+def _is_credit_card(statement: ParsedStatement) -> bool:
+    """Return True if this statement should use the credit-card OFX envelope."""
+    acct_type = statement.account.account_type or AccountType.CHECKING
+    return str(acct_type) == AccountType.CREDIT or acct_type == "CREDITLINE"
+
+
 def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     """
     Convert a ParsedStatement to an OFX/QFX string.
+
+    Checking / savings accounts use the standard bank envelope.
+    Credit card accounts use CREDITCARDMSGSRSV1 / CCSTMTRS / CCACCTFROM
+    as required by QBO for credit-card account types.
 
     Args:
         statement: fully parsed bank statement
@@ -89,9 +108,6 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     dt_end   = _dt(acc.statement_end)   if acc.statement_end   else _dt(datetime.now())
     dt_now   = datetime.now(timezone.utc).strftime("%Y%m%d120000")
 
-    # Account type
-    acct_type = acc.account_type or AccountType.CHECKING
-
     # Build transaction list
     tx_blocks = "\n".join(
         _tx_block(tx, i) for i, tx in enumerate(txns)
@@ -107,8 +123,7 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
             f"</LEDGERBAL>"
         )
 
-    body = f"""\
-<OFX>
+    signon = f"""\
 <SIGNONMSGSRSV1>
 <SONRS>
 <STATUS>
@@ -118,7 +133,46 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
 <DTSERVER>{dt_now}
 <LANGUAGE>ENG
 </SONRS>
-</SIGNONMSGSRSV1>
+</SIGNONMSGSRSV1>"""
+
+    banktranlist = f"""\
+<BANKTRANLIST>
+<DTSTART>{dt_start}
+<DTEND>{dt_end}
+{tx_blocks}
+</BANKTRANLIST>"""
+
+    if _is_credit_card(statement):
+        # ── Credit card envelope ──────────────────────────────────────────────
+        # QBO requires CREDITCARDMSGSRSV1 for accounts set up as "Credit Card".
+        # CCACCTFROM has only ACCTID — no BANKID or ACCTTYPE tags.
+        body = f"""\
+<OFX>
+{signon}
+<CREDITCARDMSGSRSV1>
+<CCSTMTTRNRS>
+<TRNUID>1001
+<STATUS>
+<CODE>0
+<SEVERITY>INFO
+</STATUS>
+<CCSTMTRS>
+<CURDEF>{acc.currency}
+<CCACCTFROM>
+<ACCTID>{_escape(acc.account_id or "UNKNOWN")}
+</CCACCTFROM>
+{banktranlist}
+{ledger_bal}
+</CCSTMTRS>
+</CCSTMTTRNRS>
+</CREDITCARDMSGSRSV1>
+</OFX>"""
+    else:
+        # ── Bank / checking / savings envelope ───────────────────────────────
+        acct_type = acc.account_type or AccountType.CHECKING
+        body = f"""\
+<OFX>
+{signon}
 <BANKMSGSRSV1>
 <STMTTRNRS>
 <TRNUID>1001
@@ -133,11 +187,7 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
 <ACCTID>{_escape(acc.account_id or "UNKNOWN")}
 <ACCTTYPE>{acct_type}
 </BANKACCTFROM>
-<BANKTRANLIST>
-<DTSTART>{dt_start}
-<DTEND>{dt_end}
-{tx_blocks}
-</BANKTRANLIST>
+{banktranlist}
 {ledger_bal}
 </STMTRS>
 </STMTTRNRS>

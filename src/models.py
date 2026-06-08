@@ -11,12 +11,19 @@ from pydantic import BaseModel, field_validator
 
 
 class TransactionType(str, Enum):
-    DEBIT  = "DEBIT"
-    CREDIT = "CREDIT"
-    INT    = "INT"      # interest
-    DIV    = "DIV"      # dividend
-    FEE    = "FEE"
-    OTHER  = "OTHER"
+    DEBIT       = "DEBIT"
+    CREDIT      = "CREDIT"
+    INT         = "INT"         # interest earned or paid
+    DIV         = "DIV"         # dividend
+    FEE         = "FEE"         # financial institution fee
+    CHECK       = "CHECK"       # paper check
+    ATM         = "ATM"         # ATM withdrawal / deposit
+    POS         = "POS"         # point-of-sale
+    DIRECTDEP   = "DIRECTDEP"   # direct deposit (payroll, ACH credit)
+    DIRECTDEBIT = "DIRECTDEBIT" # merchant-initiated ACH debit
+    XFER        = "XFER"        # account transfer
+    PAYMENT     = "PAYMENT"     # electronic bill payment
+    OTHER       = "OTHER"
 
 
 class AccountType(str, Enum):
@@ -53,14 +60,67 @@ class Transaction(BaseModel):
         return " ".join(v.split())  # collapse whitespace
 
     def infer_type(self) -> TransactionType:
-        """Infer transaction type from amount and description."""
+        """
+        Infer OFX TRNTYPE from amount sign and description keywords.
+
+        OFX 1.02 TRNTYPE values used here:
+          CREDIT      — generic deposit / credit
+          DEBIT       — generic withdrawal / debit
+          INT         — interest earned or paid
+          DIV         — dividend
+          FEE         — financial institution fee
+          CHECK       — paper check
+          ATM         — ATM withdrawal or deposit
+          POS         — point-of-sale debit
+          DIRECTDEP   — direct deposit (payroll / ACH credit)
+          DIRECTDEBIT — merchant-initiated ACH debit
+          XFER        — account-to-account transfer
+          PAYMENT     — electronic bill payment
+        """
         desc_upper = self.description.upper()
+
+        # Interest / dividends
         if "INTEREST" in desc_upper:
             return TransactionType.INT
         if "DIVIDEND" in desc_upper:
             return TransactionType.DIV
-        if any(w in desc_upper for w in ("FEE", "CHARGE", "PENALTY")):
+
+        # Fees
+        if any(w in desc_upper for w in ("FEE", "SERVICE CHG", "PENALTY", "OVERDRAFT")):
             return TransactionType.FEE
+
+        # Checks
+        if any(w in desc_upper for w in ("CHECK #", "CHECK#", "CHK #", "CHK#", "CHEQUE")):
+            return TransactionType.CHECK
+
+        # ATM
+        if "ATM" in desc_upper:
+            return TransactionType.ATM
+
+        # Transfers
+        if any(w in desc_upper for w in ("TRANSFER", "XFER", "ZELLE", "VENMO", "PAYPAL")):
+            return TransactionType.XFER
+
+        # Direct deposit (payroll, government payments)
+        if self.amount > 0 and any(
+            w in desc_upper
+            for w in ("DIRECT DEP", "DIRECTDEP", "PAYROLL", "ACH CREDIT",
+                      "ACH DEP", "TAX REFUND", "MOBILE DEP")
+        ):
+            return TransactionType.DIRECTDEP
+
+        # ACH debit / bill payment
+        if self.amount < 0 and any(
+            w in desc_upper
+            for w in ("ACH DEBIT", "BILL PAY", "PAYMENT", "ACH PMT", "ONLINE PMT")
+        ):
+            return TransactionType.PAYMENT
+
+        # POS / card purchases
+        if any(w in desc_upper for w in ("POS ", "PURCHASE", "CARD PURCHASE", "DEBIT CARD")):
+            return TransactionType.POS
+
+        # Fall back to sign-based
         return TransactionType.CREDIT if self.amount >= 0 else TransactionType.DEBIT
 
     def generate_fit_id(self, index: int) -> str:
@@ -107,12 +167,18 @@ class ParsedStatement(BaseModel):
         return len(self.transactions)
 
     def assign_fit_ids(self):
-        """Assign unique FITID to every transaction (required by OFX spec)."""
+        """
+        Assign unique FITID to every transaction (required by OFX spec) and
+        infer the TRNTYPE for all transactions regardless of whether a fit_id
+        was pre-assigned.
+        """
         seen: dict[str, int] = {}
         for i, tx in enumerate(self.transactions):
+            # Always infer type — never leave transactions as OTHER
+            tx.tx_type = tx.infer_type()
+
             if tx.fit_id is None:
                 base = tx.generate_fit_id(i)
                 count = seen.get(base, 0)
                 seen[base] = count + 1
                 tx.fit_id = f"{base}-{count}" if count else base
-                tx.tx_type = tx.infer_type()
