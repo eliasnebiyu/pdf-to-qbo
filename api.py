@@ -166,6 +166,7 @@ async def preview(
         "transaction_count": statement.transaction_count,
         "total_debits":     float(statement.total_debits),
         "total_credits":    float(statement.total_credits),
+        "opening_balance":  float(statement.account.opening_balance) if statement.account.opening_balance else None,
         "closing_balance":  float(statement.account.closing_balance) if statement.account.closing_balance else None,
         "parser_used":      statement.parser_used,
         "warnings":         statement.warnings,

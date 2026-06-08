@@ -11,13 +11,17 @@
  *     warnings, transaction_count, total_debits, total_credits, closing_balance }
  */
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-// Required for react-pdf worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Load the PDF.js worker from the locally-installed package so the app works
+// offline and the worker version always matches the library version.
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.js",
+  import.meta.url,
+).toString();
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const css = `
@@ -629,12 +633,17 @@ const inferType = (amount, desc) => {
   return parseFloat(amount) >= 0 ? "CREDIT" : "DEBIT";
 };
 
-const flagReasons = (tx) => {
+// balanceDeltaMap is optional — pass it when available for the per-row balance check.
+// When omitted (e.g. from ExportModal) only the type check runs.
+const flagReasons = (tx, balanceDeltaMap = null) => {
   const reasons = [];
   if (tx.type === "OTHER") reasons.push("type unclassified");
-  if (tx._balanceDelta !== undefined && tx.balance !== null) {
-    const delta = Math.abs(tx._balanceDelta - Math.abs(parseFloat(tx.amount || 0)));
-    if (delta > 0.02) reasons.push(`balance delta off by $${delta.toFixed(2)}`);
+  if (balanceDeltaMap && balanceDeltaMap[tx.id] !== undefined) {
+    // Compare |balance change between consecutive rows| vs |transaction amount|
+    const balChange = Math.abs(balanceDeltaMap[tx.id]);
+    const txAmt     = Math.abs(parseFloat(tx.amount || 0));
+    const diff      = Math.abs(balChange - txAmt);
+    if (diff > 0.02) reasons.push(`balance off by $${diff.toFixed(2)}`);
   }
   return reasons;
 };
@@ -663,9 +672,9 @@ function TypeBadge({ type }) {
   return <span className={`type-badge type-${type || "OTHER"}`}>{type || "OTHER"}</span>;
 }
 
-function StatusDot({ tx, deleted }) {
+function StatusDot({ tx, deleted, balanceDeltaMap }) {
   if (deleted) return <span className="dot dot-del" title="Deleted" />;
-  const reasons = flagReasons(tx);
+  const reasons = flagReasons(tx, balanceDeltaMap);
   if (reasons.length) return <span className="dot dot-warn" title={reasons.join(", ")} />;
   return <span className="dot dot-ok" title="OK" />;
 }
@@ -832,6 +841,79 @@ export default function ReviewUI({
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [currentPage]);
 
+  // ── Per-row balance delta map ──────────────────────────────────
+  // Maps tx.id → (balance[n] - balance[n-1]) for every consecutive
+  // pair of non-deleted rows that carry a running balance.
+  const balanceDeltaMap = useMemo(() => {
+    const withBal = transactions
+      .filter(t => !t._deleted && t.balance != null && t.balance !== "")
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const map = {};
+    for (let i = 1; i < withBal.length; i++) {
+      map[withBal[i].id] =
+        parseFloat(withBal[i].balance) - parseFloat(withBal[i - 1].balance);
+    }
+    return map;
+  }, [transactions]);
+
+  // ── Statement-level reconciliation ────────────────────────────
+  // Three-tier fallback:
+  //  1. opening_balance (from statement header)    + Σ amounts ≈ closing_balance
+  //  2. infer opening from first tx balance        + Σ amounts ≈ closing_balance
+  //  3. last tx running balance                              ≈ closing_balance
+  const reconciliation = useMemo(() => {
+    const closingBal = meta.closing_balance != null ? parseFloat(meta.closing_balance) : null;
+    if (closingBal == null) return { status: "no-data" };
+
+    const activeTxs = transactions.filter(t => !t._deleted);
+    if (activeTxs.length === 0) return { status: "no-data" };
+
+    const netFlow = activeTxs.reduce((s, t) => s + parseFloat(t.amount || 0), 0);
+
+    // Tier 1: explicit opening balance
+    let openingBal = meta.opening_balance != null ? parseFloat(meta.opening_balance) : null;
+
+    // Tier 2: infer from first transaction's running balance
+    if (openingBal == null) {
+      const sorted = activeTxs
+        .filter(t => t.balance != null && t.balance !== "")
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      if (sorted.length > 0) {
+        openingBal = parseFloat(sorted[0].balance) - parseFloat(sorted[0].amount || 0);
+      }
+    }
+
+    if (openingBal != null) {
+      const computed = openingBal + netFlow;
+      const diff     = computed - closingBal;
+      return {
+        status:     Math.abs(diff) < 0.02 ? "ok" : "off",
+        diff,
+        computed,
+        closing:    closingBal,
+        opening:    openingBal,
+        method:     "sum",
+      };
+    }
+
+    // Tier 3: last running balance vs closing balance
+    const sorted = activeTxs
+      .filter(t => t.balance != null && t.balance !== "")
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    if (sorted.length > 0) {
+      const lastBal = parseFloat(sorted[sorted.length - 1].balance);
+      const diff    = lastBal - closingBal;
+      return {
+        status:  Math.abs(diff) < 0.02 ? "ok" : "off",
+        diff,
+        closing: closingBal,
+        method:  "last-balance",
+      };
+    }
+
+    return { status: "no-data" };
+  }, [transactions, meta]);
+
   // ── Highlight text in the PDF that matches the hovered tx ─────
   const customTextRenderer = useCallback(({ str }) => {
     if (!hoveredId) return str;
@@ -912,13 +994,16 @@ export default function ReviewUI({
   const addTx     = (tx) => setTransactions(txs => [tx, ...txs]);
   const confirmTx = (id) => setTransactions(txs => txs.map(t => t.id === id ? { ...t, _confirmed: true } : t));
   const confirmAll = () => {
-    setTransactions(txs => txs.map(t => ({ ...t, _confirmed: flagReasons(t).length === 0 ? true : t._confirmed })));
+    setTransactions(txs => txs.map(t => ({
+      ...t,
+      _confirmed: flagReasons(t, balanceDeltaMap).length === 0 ? true : t._confirmed,
+    })));
   };
 
   // ── Filtering & sorting ────────────────────────────────────────
   const visible = transactions
     .filter(t => {
-      if (filter === "flagged") return flagReasons(t).length > 0 && !t._deleted;
+      if (filter === "flagged") return flagReasons(t, balanceDeltaMap).length > 0 && !t._deleted;
       if (filter === "debit")   return parseFloat(t.amount) < 0 && !t._deleted;
       if (filter === "credit")  return parseFloat(t.amount) >= 0 && !t._deleted;
       return true;
@@ -936,10 +1021,10 @@ export default function ReviewUI({
       return 0;
     });
 
-  const flagged   = transactions.filter(t => flagReasons(t).length > 0 && !t._deleted);
-  const totalCr   = transactions.filter(t => !t._deleted && parseFloat(t.amount) >= 0).reduce((s,t) => s + parseFloat(t.amount), 0);
-  const totalDr   = transactions.filter(t => !t._deleted && parseFloat(t.amount) < 0).reduce((s,t) => s + parseFloat(t.amount), 0);
-  const cleanCount = transactions.filter(t => !t._deleted && !flagReasons(t).length).length;
+  const flagged    = transactions.filter(t => flagReasons(t, balanceDeltaMap).length > 0 && !t._deleted);
+  const totalCr    = transactions.filter(t => !t._deleted && parseFloat(t.amount) >= 0).reduce((s,t) => s + parseFloat(t.amount), 0);
+  const totalDr    = transactions.filter(t => !t._deleted && parseFloat(t.amount) < 0).reduce((s,t) => s + parseFloat(t.amount), 0);
+  const cleanCount = transactions.filter(t => !t._deleted && !flagReasons(t, balanceDeltaMap).length).length;
 
   const sort = (key) => { if (sortKey === key) setSortAsc(a => !a); else { setSortKey(key); setSortAsc(true); } };
   const sortIcon = (key) => sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
@@ -1007,7 +1092,58 @@ export default function ReviewUI({
             {flagged.length ? `${flagged.length} flagged` : "All clear"}
           </div>
         </div>
+        <div className="stat-cell">
+          <div className="stat-label">Reconciliation</div>
+          <div className={`stat-val ${
+            reconciliation.status === "ok"      ? "green" :
+            reconciliation.status === "off"     ? "red"   : ""
+          }`}>
+            {reconciliation.status === "ok"  ? "✓ Balanced" :
+             reconciliation.status === "off" ? `Off ${reconciliation.diff > 0 ? "+" : ""}${fmt(reconciliation.diff)}` :
+             "—"}
+          </div>
+        </div>
       </div>
+
+      {/* Reconciliation detail banner — only when there is a mismatch */}
+      {reconciliation.status === "off" && (
+        <div style={{
+          padding: "6px 20px",
+          background: "var(--red-dim)",
+          borderBottom: "1px solid var(--red)",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          fontSize: 12,
+          color: "var(--red)",
+          flexShrink: 0,
+          fontFamily: "var(--mono)",
+          flexWrap: "wrap",
+        }}>
+          <span>⚠ Statement does not reconcile</span>
+          {reconciliation.method === "sum" && (
+            <>
+              <span style={{ color: "var(--white-2)" }}>
+                Opening {fmt(reconciliation.opening)} + net flow {reconciliation.diff > 0 ? "+" : ""}{fmt(reconciliation.computed - reconciliation.opening)}
+                {" = "}<strong>{fmt(reconciliation.computed)}</strong>
+                {" · "}
+                Statement closing <strong>{fmt(reconciliation.closing)}</strong>
+                {" · "}
+                Δ <strong style={{ color: "var(--red)" }}>{fmt(reconciliation.diff)}</strong>
+              </span>
+            </>
+          )}
+          {reconciliation.method === "last-balance" && (
+            <span style={{ color: "var(--white-2)" }}>
+              Last running balance <strong>{fmt(reconciliation.closing + reconciliation.diff)}</strong>
+              {" vs "}
+              statement closing <strong>{fmt(reconciliation.closing)}</strong>
+              {" · "}
+              Δ <strong style={{ color: "var(--red)" }}>{fmt(reconciliation.diff)}</strong>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Main split layout */}
       <div className="main-layout">
@@ -1124,7 +1260,7 @@ export default function ReviewUI({
               </thead>
               <tbody>
                 {visible.map(tx => {
-                  const reasons = flagReasons(tx);
+                  const reasons = flagReasons(tx, balanceDeltaMap);
                   const isNeg   = parseFloat(tx.amount) < 0;
                   const rowCls  = [
                     selectedId === tx.id ? "selected" : "",
@@ -1146,7 +1282,7 @@ export default function ReviewUI({
                     >
                       {/* status dot */}
                       <td onClick={e => e.stopPropagation()} style={{ paddingLeft: 14 }}>
-                        <StatusDot tx={tx} deleted={tx._deleted} />
+                        <StatusDot tx={tx} deleted={tx._deleted} balanceDeltaMap={balanceDeltaMap} />
                       </td>
 
                       {/* date */}

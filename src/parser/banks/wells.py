@@ -12,8 +12,18 @@ from src.utils.amount_parser import parse_amount, parse_date
 from src.utils.dedup import clean
 
 _WF_MARKERS = [
-    "wells fargo",
     "wellsfargo.com",
+    "wells fargo bank, n.a.",
+    "wells fargo bank na",
+    "wells fargo advisors",
+    "1-800-to-wells",
+    "wellsfargobank",
+]
+
+# Secondary markers — require ≥2 hits to avoid false-positives
+# when a transaction description merely mentions Wells Fargo
+_WF_SECONDARY = [
+    "wells fargo",
     "wf bank",
 ]
 
@@ -23,7 +33,12 @@ class WellsFargoParser(BaseParser):
 
     def can_parse(self) -> bool:
         text_lower = self.full_text.lower()
-        return any(m in text_lower for m in _WF_MARKERS)
+        # Any strong marker → confirmed
+        if any(m in text_lower for m in _WF_MARKERS):
+            return True
+        # Weak marker needs additional corroborating evidence
+        hits = sum(1 for m in _WF_SECONDARY if m in text_lower)
+        return hits >= 2
 
     def extract(self) -> ParsedStatement:
         text    = self.full_text

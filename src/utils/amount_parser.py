@@ -22,18 +22,25 @@ def parse_amount(raw: str, debit_is_negative: bool = True) -> Optional[Decimal]:
     Parse a raw amount string into a signed Decimal.
 
     Handles:
-      - Standard:        "1,234.56"  → Decimal("1234.56")
-      - Parenthetical:   "(500.00)"  → Decimal("-500.00")
-      - Trailing sign:   "500.00-"   → Decimal("-500.00")
-      - CR/DR suffix:    "500.00 DR" → Decimal("-500.00") if debit_is_negative
-      - Dollar sign:     "$1,234.56" → Decimal("1234.56")
+      - Standard:        "1,234.56"   → Decimal("1234.56")
+      - Parenthetical:   "(500.00)"   → Decimal("-500.00")
+      - Trailing sign:   "500.00-"    → Decimal("-500.00")
+      - CR/DR suffix:    "500.00 DR"  → Decimal("-500.00") if debit_is_negative
+      - Dollar sign:     "$1,234.56"  → Decimal("1234.56")
+      - Negative dollar: "-$95.85"    → Decimal("-95.85")
+      - Dollar trailing: "$500.00-"   → Decimal("-500.00")
     """
     if not raw:
         return None
     raw = raw.strip()
 
+    # Normalise: remove dollar signs so that $-prefixed strings work with all
+    # subsequent checks (e.g. "$22,996.60-" → "22,996.60-").
+    # Handle both leading "-$" and "$" to preserve the sign.
+    normed = re.sub(r"(?<!\d)\$", "", raw)   # strip $ not preceded by digit
+
     # Parenthetical negative: (1,234.56)
-    paren = _PAREN_NEG.match(raw)
+    paren = _PAREN_NEG.match(normed)
     if paren:
         cleaned = _AMOUNT_CLEAN.sub("", paren.group(1))
         try:
@@ -42,7 +49,7 @@ def parse_amount(raw: str, debit_is_negative: bool = True) -> Optional[Decimal]:
             return None
 
     # Trailing sign or CR/DR
-    trail = _TRAILING_SIGN.match(raw)
+    trail = _TRAILING_SIGN.match(normed)
     if trail:
         num_str = _AMOUNT_CLEAN.sub("", trail.group(1))
         suffix  = trail.group(2).upper()
@@ -55,7 +62,7 @@ def parse_amount(raw: str, debit_is_negative: bool = True) -> Optional[Decimal]:
             return None
 
     # Standard / leading sign
-    cleaned = _AMOUNT_CLEAN.sub("", raw)
+    cleaned = _AMOUNT_CLEAN.sub("", normed)
     try:
         return Decimal(cleaned)
     except InvalidOperation:

@@ -57,25 +57,23 @@ _CC_SECTIONS = re.compile(
 )
 
 # ── Line-level regex (text-mode fallback) ─────────────────────────────────────
-# Checking/savings: "01/15  ATM WITHDRAWAL          -200.00   4,250.00"
+# Checking/savings: "01/15  ATM WITHDRAWAL -200.00 4,250.00"
 _CHK_LINE = re.compile(
     r"^(?P<date>\d{1,2}/\d{1,2}(?:/\d{2,4})?)"
-    r"\s{1,6}"
-    r"(?P<desc>.+?)"
-    r"\s{2,}"
+    r"\s+"
+    r"(?P<desc>.+?)\s+"
     r"(?P<amount>-?[\d,]+\.\d{2})"
-    r"(?:\s+(?P<balance>-?[\d,]+\.\d{2}))?$",
+    r"(?:\s+(?P<balance>[\d,]+\.\d{2}))?$",
 )
 
-# Credit card: "01/15  01/16  AMAZON.COM             89.99"
+# Credit card: "05/11  05/11  AMAZON.COM $89.99"  or  "05/11 PAYMENT -$95.85"
+# Citi CC shows amounts with optional $ prefix; sign already encoded in the value.
 _CC_LINE = re.compile(
     r"^(?P<date>\d{1,2}/\d{1,2}(?:/\d{2,4})?)"
     r"(?:\s+\d{1,2}/\d{1,2}(?:/\d{2,4})?)?"   # optional posting date
-    r"\s{1,6}"
-    r"(?P<desc>.+?)"
-    r"\s{2,}"
-    r"(?P<amount>[\d,]+\.\d{2})"               # always positive on CC
-    r"$",
+    r"\s+"
+    r"(?P<desc>.+?)\s+"
+    r"(?P<amount>-?\$?[\d,]+\.\d{2})$"          # signed, optional $
 )
 
 
@@ -105,6 +103,28 @@ class CitiParser(BaseParser):
 
         if is_cc:
             account.account_type = AccountType.CREDIT
+
+        # Override period with Citi-specific targeted patterns so we don't
+        # accidentally pick up "Promotional Rate Expires MM/DD/YY" as the end date.
+        year = self._year_hint()
+        if is_cc:
+            # "Billing Period: 05/05/26-06/02/26"
+            bp = re.search(
+                r"Billing\s+Period[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+                text, re.I,
+            )
+            if bp:
+                account.statement_start = parse_date(bp.group(1), year_hint=year)
+                account.statement_end   = parse_date(bp.group(2), year_hint=year)
+        else:
+            # "Statement Period: 01/01/2024 – 01/31/2024"
+            sp = re.search(
+                r"Statement\s+Period[:\s]+(\d{1,2}/\d{1,2}/\d{2,4})\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+                text, re.I,
+            )
+            if sp:
+                account.statement_start = parse_date(sp.group(1), year_hint=year)
+                account.statement_end   = parse_date(sp.group(2), year_hint=year)
 
         txns = self._extract_transactions(text, is_cc=is_cc)
 
@@ -366,7 +386,6 @@ class CitiParser(BaseParser):
         pattern = _CC_LINE if is_cc else _CHK_LINE
 
         in_tx_section = False
-        in_payment_section = False
 
         for line in text.splitlines():
             line = line.strip()
@@ -374,18 +393,15 @@ class CitiParser(BaseParser):
             # Track section context
             if _CHECKING_SECTIONS.search(line) or _CC_SECTIONS.search(line):
                 in_tx_section = True
-                in_payment_section = bool(
-                    re.search(r"payment|credit.*adjust", line, re.I)
-                )
                 continue
 
             if not in_tx_section:
                 continue
 
-            # Skip divider lines and totals
+            # Skip divider lines, totals, and column headers
             if re.match(r"^[-=]{5,}$", line):
                 continue
-            if re.search(r"^\s*(total|subtotal|balance\s+forward)", line, re.I):
+            if re.search(r"^\s*(total|subtotal|balance\s+forward|summary|detail)", line, re.I):
                 continue
 
             m = pattern.match(line)
@@ -400,9 +416,12 @@ class CitiParser(BaseParser):
             if amount is None:
                 continue
 
-            # Apply sign convention
+            # OFX sign convention for CC:
+            # Citi CC PDF already encodes sign: negative = payment, positive = charge.
+            # OFX wants: payment = positive (money in), charge = negative (money out).
+            # So simply negate the parsed value.
             if is_cc:
-                amount = abs(amount) if in_payment_section else -abs(amount)
+                amount = -amount
 
             balance: Optional[Decimal] = None
             if not is_cc and "balance" in m.groupdict() and m.group("balance"):
@@ -453,5 +472,19 @@ class CitiParser(BaseParser):
 
     def _year_hint(self) -> int:
         """Extract the statement year from the full text, or default to today."""
-        m = re.search(r"\b(20\d{2})\b", self.full_text)
+        text = self.full_text
+        # Use billing period date (most reliable — avoids "Member Since YYYY" noise)
+        for pat in [
+            r"Billing\s+Period[:\s]+\d{1,2}/\d{1,2}/(\d{2,4})",
+            r"Statement\s+Period[:\s]+\d{1,2}/\d{1,2}/(\d{2,4})",
+            r"charged\s+in\s+(20\d{2})\b",
+            r"(20\d{2})\s+totals?\s+year",
+        ]:
+            m = re.search(pat, text, re.I)
+            if m:
+                yr = m.group(1)
+                yr = 2000 + int(yr) if len(yr) == 2 else int(yr)
+                if 2015 <= yr <= 2040:
+                    return yr
+        m = re.search(r"\b(20\d{2})\b", text)
         return int(m.group(1)) if m else date.today().year

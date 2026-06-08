@@ -1,6 +1,7 @@
 """
 Chase bank statement parser.
 Handles Chase's standard PDF layout: Date | Description | Amount | Balance
+Also handles Chase credit card statements: Date | Description | Amount
 """
 from __future__ import annotations
 import re
@@ -8,7 +9,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from src.models import ParsedStatement, Transaction
+from src.models import ParsedStatement, Transaction, AccountType
 from src.parser.base import BaseParser
 from src.utils.amount_parser import parse_amount, parse_date
 from src.utils.dedup import clean
@@ -22,18 +23,35 @@ _CHASE_MARKERS = [
     "chase freedom",
     "chase total checking",
     "jp morgan",
+    "chase ultimate rewards",
+    "chase credit card",
 ]
 
 # Chase transaction line pattern (text-mode fallback)
-# Example: "01/15 AMAZON.COM*1234567  -123.45   4,567.89"
+# Checking: "01/15 AMAZON.COM -123.45 4,567.89"
+# CC:       "01/15 AMAZON.COM -123.45"
+# Note: pdfplumber collapses multi-space gaps to single space, so we use \s+
 _CHASE_LINE = re.compile(
     r"^(?P<date>\d{2}/\d{2})"               # MM/DD
     r"\s+"
-    r"(?P<desc>.+?)"
-    r"\s{2,}"
+    r"(?P<desc>.+?)\s+"
     r"(?P<amount>-?[\d,]+\.\d{2})"
-    r"(?:\s+(?P<balance>-?[\d,]+\.\d{2}))?$"
+    r"(?:\s+(?P<balance>[\d,]+\.\d{2}))?$"
 )
+
+# Credit card signals
+_CC_SIGNALS = [
+    "minimum payment",
+    "credit access line",
+    "new balance",
+    "account activity",
+    "chase ultimate rewards",
+    "chase sapphire",
+    "chase freedom",
+    "chase slate",
+    "payment due",
+    "minimum due",
+]
 
 
 class ChaseParser(BaseParser):
@@ -45,24 +63,55 @@ class ChaseParser(BaseParser):
         text_lower = self.full_text.lower()
         return any(marker in text_lower for marker in _CHASE_MARKERS)
 
+    def _is_credit_card(self, text: str) -> bool:
+        """Return True if the text looks like a Chase credit card statement."""
+        text_lower = text.lower()
+        hits = sum(1 for s in _CC_SIGNALS if s in text_lower)
+        return hits >= 2
+
     def extract(self) -> ParsedStatement:
         text    = self.full_text
+        is_cc   = self._is_credit_card(text)
         account = self.build_account(text, bank_name="JPMorgan Chase")
-        txns    = self._extract_transactions(text)
+        if is_cc:
+            account.account_type = AccountType.CREDIT
 
+        # Override period with Chase-specific patterns (build_account's generic
+        # extract_date_range can pick up barcodes / promo-rate dates).
+        year = self._year_hint()
+        if is_cc:
+            # "Opening/Closing Date 04/07/26 - 05/06/26"
+            m = re.search(
+                r"Opening/Closing\s+Date\s+(\d{2}/\d{2}/\d{2,4})\s*[-–]\s*(\d{2}/\d{2}/\d{2,4})",
+                text, re.I,
+            )
+            if m:
+                account.statement_start = parse_date(m.group(1), year_hint=year)
+                account.statement_end   = parse_date(m.group(2), year_hint=year)
+        else:
+            # "April 21, 2026throughMay 20, 2026"  (may have no space around "through")
+            m = re.search(
+                r"([A-Za-z]+\s+\d{1,2},?\s*\d{4})\s*through\s*([A-Za-z]+\s+\d{1,2},?\s*\d{4})",
+                text, re.I,
+            )
+            if m:
+                account.statement_start = parse_date(m.group(1))
+                account.statement_end   = parse_date(m.group(2))
+
+        txns = self._extract_transactions(text, is_cc=is_cc)
         txns = clean(txns, warn=self.warn)
 
         statement = ParsedStatement(
             account=account,
             transactions=txns,
             raw_page_count=self.page_count,
-            parser_used="chase",
+            parser_used="chase_cc" if is_cc else "chase",
             warnings=self.warnings,
         )
         statement.assign_fit_ids()
         return statement
 
-    def _extract_transactions(self, text: str) -> list[Transaction]:
+    def _extract_transactions(self, text: str, is_cc: bool = False) -> list[Transaction]:
         """
         Chase statements have a clear transaction section.
         First attempt table extraction; fall back to line matching.
@@ -70,10 +119,13 @@ class ChaseParser(BaseParser):
         # Try table extraction across all pages
         txns = self._from_tables()
         if txns:
+            if is_cc:
+                for tx in txns:
+                    tx.amount = -tx.amount
             return txns
 
         # Fallback: find the transaction section and parse lines
-        return self._from_lines(text)
+        return self._from_lines(text, is_cc=is_cc)
 
     def _from_tables(self) -> list[Transaction]:
         txns: list[Transaction] = []
@@ -161,25 +213,53 @@ class ChaseParser(BaseParser):
 
         return txns
 
-    def _from_lines(self, text: str) -> list[Transaction]:
+    def _year_hint(self) -> int:
+        """Extract statement year, avoiding phone-number false positives."""
+        text = self.full_text
+        # High-confidence patterns
+        for pat in [
+            r"charged\s+in\s+(20\d{2})\b",        # "charged in 2026"
+            r"(20\d{2})\s+totals?\s+year",         # "2026 Totals Year-to-Date"
+            r"fees?\s+in\s+(20\d{2})\b",           # "fees in 2026"
+            r"Opening/Closing\s+Date\s+\d{2}/\d{2}/(\d{2,4})",
+        ]:
+            m = re.search(pat, text, re.I)
+            if m:
+                yr = m.group(1)
+                yr = 2000 + int(yr) if len(yr) == 2 else int(yr)
+                if 2015 <= yr <= 2040:
+                    return yr
+        # Fallback: first 4-digit year
+        m = re.search(r"\b(20\d{2})\b", text)
+        return int(m.group(1)) if m else date.today().year
+
+    def _from_lines(self, text: str, is_cc: bool = False) -> list[Transaction]:
         """Line-by-line parsing for Chase statement text."""
         txns: list[Transaction] = []
 
-        year = date.today().year
-        year_m = re.search(r"\b(20\d{2})\b", text)
-        if year_m:
-            year = int(year_m.group(1))
+        year = self._year_hint()
 
         in_tx_section = False
+        prev_page = 1
         for line in text.splitlines():
             line = line.strip()
 
-            # Chase uses section headers like "ACCOUNT ACTIVITY"
-            if re.search(r"account\s+activity|transaction\s+detail", line, re.I):
+            # Chase uses section headers like "ACCOUNT ACTIVITY" / "TRANSACTION DETAIL"
+            # Some PDFs render text with doubled characters (e.g. "AACCCCOOUUNNTT AACCTTIIVVIITTYY")
+            # The doubled-char pattern uses char+ for each letter to handle both forms.
+            if re.search(
+                r"A+C+O+U+N+T+\s+A+C+T+I+V+I+T+Y+"
+                r"|T+R+A+N+S+A+C+T+I+O+N+\s+D+E+T+A+I+L+",
+                line, re.I
+            ):
                 in_tx_section = True
                 continue
 
             if not in_tx_section:
+                continue
+
+            # Skip column headers and divider lines
+            if re.match(r"^(date\s+description|date\s+of|beginning\s+balance)", line, re.I):
                 continue
 
             m = _CHASE_LINE.match(line)
@@ -196,6 +276,11 @@ class ChaseParser(BaseParser):
 
             if amount is None:
                 continue
+
+            # For CC statements: PDF sign is inverted vs OFX convention
+            # (positive charge → negative OFX; negative payment → positive OFX)
+            if is_cc:
+                amount = -amount
 
             try:
                 txns.append(Transaction(
