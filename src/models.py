@@ -3,6 +3,7 @@ Core data models for the PDF-to-QBO converter.
 All financial data flows through these models to ensure consistency.
 """
 from __future__ import annotations
+import hashlib
 from datetime import date
 from decimal import Decimal
 from enum import Enum
@@ -124,11 +125,30 @@ class Transaction(BaseModel):
         # Fall back to sign-based
         return TransactionType.CREDIT if self.amount >= 0 else TransactionType.DEBIT
 
-    def generate_fit_id(self, index: int) -> str:
-        """Generate a stable unique ID for OFX FITID field."""
-        date_str = self.date.strftime("%Y%m%d")
-        amt_str  = str(abs(self.amount)).replace(".", "")
-        return f"{date_str}-{amt_str}-{index:04d}"
+    def generate_fit_id(self) -> str:
+        """
+        Generate a content-stable unique ID for the OFX FITID field.
+
+        The ID is a SHA-256 hash (truncated to 16 hex chars) of the
+        canonical fields that identify a transaction:
+            date + amount (normalised) + description (lower-cased, stripped)
+
+        This means the same transaction always gets the same FITID regardless
+        of upload order, so QBO's duplicate-detection works correctly when a
+        statement is re-imported or overlaps with another file.
+
+        Collision handling: if two transactions share the same hash (same date,
+        amount, and description — e.g. two identical coffee purchases on the
+        same day) assign_fit_ids() appends a suffix (-1, -2 …) to each
+        successive duplicate so every FITID in a statement is unique.
+        """
+        canonical = (
+            self.date.isoformat()
+            + "|" + str(self.amount.normalize())
+            + "|" + self.description.strip().lower()
+        )
+        digest = hashlib.sha256(canonical.encode()).hexdigest()[:16]
+        return f"{self.date.strftime('%Y%m%d')}-{digest}"
 
     class Config:
         use_enum_values = True
@@ -169,17 +189,33 @@ class ParsedStatement(BaseModel):
 
     def assign_fit_ids(self):
         """
-        Assign unique FITID to every transaction (required by OFX spec) and
-        infer the TRNTYPE for all transactions regardless of whether a fit_id
-        was pre-assigned.
+        Assign a unique FITID to every transaction (required by OFX spec)
+        and infer the TRNTYPE for all transactions.
+
+        FITID stability guarantee
+        ─────────────────────────
+        Each FITID is a content hash of (date, amount, description) so the
+        same transaction always gets the same ID regardless of upload order.
+        QBO uses FITIDs to skip duplicates — stable IDs mean re-importing a
+        statement or uploading an overlapping statement never creates dupes.
+
+        Collision handling
+        ──────────────────
+        Two transactions with the same date, amount, and description (e.g.
+        two identical $4.50 coffee purchases on the same day) would hash to
+        the same base ID.  We detect these and append a counter suffix so
+        every FITID in the statement is unique:
+            20240115-abc123def456abcd       ← first occurrence
+            20240115-abc123def456abcd-1     ← second occurrence
+            20240115-abc123def456abcd-2     ← third occurrence …
         """
         seen: dict[str, int] = {}
-        for i, tx in enumerate(self.transactions):
+        for tx in self.transactions:
             # Always infer type — never leave transactions as OTHER
             tx.tx_type = tx.infer_type()
 
             if tx.fit_id is None:
-                base = tx.generate_fit_id(i)
+                base  = tx.generate_fit_id()
                 count = seen.get(base, 0)
                 seen[base] = count + 1
                 tx.fit_id = f"{base}-{count}" if count else base

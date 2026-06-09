@@ -145,8 +145,8 @@ class LLMParser(BaseParser):
 
     bank_name = "LLM (Claude)"
 
-    def __init__(self, pdf_path, injected_text: str | None = None):
-        super().__init__(pdf_path)
+    def __init__(self, pdf_path, injected_text: str | None = None, password: str | None = None):
+        super().__init__(pdf_path, password=password)
         self._injected_text = injected_text
 
     def can_parse(self) -> bool:

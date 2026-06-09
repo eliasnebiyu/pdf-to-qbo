@@ -149,6 +149,10 @@ async def convert(
         default=True,
         description="Add QBO category suggestions to transactions",
     ),
+    password: Optional[str] = Query(
+        default=None,
+        description="Password to decrypt a password-protected PDF",
+    ),
 ):
     """
     Upload a single bank statement PDF and receive a QBO-compatible file.
@@ -165,7 +169,7 @@ async def convert(
 
     tmp_path = _save_upload(contents)
     try:
-        statement = detect_and_parse(tmp_path)
+        statement = detect_and_parse(tmp_path, password=password)
     except Exception as e:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(e))
@@ -214,6 +218,7 @@ async def batch_convert(
     start_date: Optional[str] = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str] = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool          = Query(default=True),
+    password:   Optional[str] = Query(default=None, description="Password applied to all uploaded PDFs"),
 ):
     """
     Upload multiple PDFs at once (e.g. 12 months of statements).
@@ -245,7 +250,7 @@ async def batch_convert(
         tmp_paths.append(tmp_path)
 
         try:
-            stmt = detect_and_parse(tmp_path)
+            stmt = detect_and_parse(tmp_path, password=password)
             statements.append(stmt)
             all_warnings.extend([f"{upload.filename}: {w}" for w in stmt.warnings])
         except Exception as e:
@@ -321,6 +326,7 @@ async def preview(
     start_date: Optional[str] = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str] = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool          = Query(default=True, description="Add category suggestions"),
+    password:   Optional[str] = Query(default=None, description="Password for a password-protected PDF"),
 ):
     """
     Upload a PDF and get a JSON summary of extracted transactions.
@@ -333,7 +339,7 @@ async def preview(
     tmp_path = _save_upload(contents)
 
     try:
-        statement = detect_and_parse(tmp_path)
+        statement = detect_and_parse(tmp_path, password=password)
     except Exception as e:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(e))

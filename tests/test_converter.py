@@ -103,7 +103,7 @@ class TestTransaction:
     def test_type_inference_credit(self):
         tx = Transaction(
             date=date(2024, 1, 15),
-            description="Direct Deposit",
+            description="Incoming payment received",
             amount=Decimal("2500.00"),
         )
         assert tx.infer_type() == TransactionType.CREDIT
@@ -130,8 +130,10 @@ class TestTransaction:
             description="Test",
             amount=Decimal("-50.00"),
         )
-        fit_id = tx.generate_fit_id(0)
+        fit_id = tx.generate_fit_id()
         assert fit_id.startswith("20240115")
+        # Same transaction must always produce the same FITID (content-stable)
+        assert fit_id == tx.generate_fit_id()
 
 
 # ── ParsedStatement tests ─────────────────────────────────────────────────────

@@ -46,9 +46,47 @@ _RULE_PARSERS: list[type[BaseParser]] = [
 _PARSERS = _RULE_PARSERS + [LLMParser]
 
 
-def detect_and_parse(pdf_path: str | Path) -> ParsedStatement:
+def _check_pdf_password(pdf_path: Path, password: str | None = None) -> None:
+    """
+    Raise a clear ValueError if the PDF is password-protected and no
+    password (or the wrong password) was supplied.
+
+    pdfplumber wraps pdfminer which raises PDFPasswordIncorrect when it
+    encounters an encrypted PDF.  We catch that and surface a friendly,
+    actionable message instead of a raw traceback.
+    """
+    import pdfplumber
+    try:
+        kw = {"password": password} if password else {}
+        with pdfplumber.open(pdf_path, **kw) as pdf:
+            # Force pdfminer to actually attempt decryption by reading page 1
+            _ = pdf.pages[0].extract_text() if pdf.pages else None
+    except Exception as exc:
+        msg = str(exc).lower()
+        if any(k in msg for k in ("password", "encrypt", "incorrect", "decrypt")):
+            if password:
+                raise ValueError(
+                    "The password you supplied is incorrect for this PDF. "
+                    "Please check the password and try again."
+                ) from None
+            raise ValueError(
+                "This PDF is password-protected. "
+                "Please provide the password via the ?password= query parameter, "
+                "or remove the password in your PDF reader (File → Export/Save as PDF "
+                "without password) before uploading."
+            ) from None
+        # Not a password error — re-raise so the caller sees the real problem
+        raise
+
+
+def detect_and_parse(pdf_path: str | Path, password: str | None = None) -> ParsedStatement:
     """
     Open a PDF, detect the bank, and return a fully parsed statement.
+
+    Parameters
+    ----------
+    pdf_path : path to the PDF file
+    password : optional decryption password for password-protected PDFs
 
     Strategy
     --------
@@ -67,6 +105,12 @@ def detect_and_parse(pdf_path: str | Path) -> ParsedStatement:
     if pdf_path.suffix.lower() != ".pdf":
         raise ValueError(f"Expected a .pdf file, got: {pdf_path.suffix}")
 
+    # ── Password check ────────────────────────────────────────────────────────
+    # Raises ValueError with a clear message if the PDF is encrypted and no
+    # password (or the wrong password) was given.  BaseParser.open() forwards
+    # the password to pdfplumber so all parsers can read the decrypted file.
+    _check_pdf_password(pdf_path, password=password)
+
     # ── OCR pre-check ─────────────────────────────────────────────────────────
     # If the PDF is scanned (image-based), pdfplumber extracts no text and all
     # rule-based parsers will return 0 transactions.  Run OCR first so the
@@ -84,7 +128,7 @@ def detect_and_parse(pdf_path: str | Path) -> ParsedStatement:
         # Inject OCR text into a temporary text file so the LLM parser can use it
         # (rule-based parsers need pdfplumber's per-page extraction)
         from src.parser.banks.llm_parser import LLMParser as _LLM
-        llm = _LLM(pdf_path, injected_text=ocr_text)
+        llm = _LLM(pdf_path, injected_text=ocr_text, password=password)
         with llm:
             if llm.can_parse():
                 stmt = llm.extract()
@@ -96,7 +140,7 @@ def detect_and_parse(pdf_path: str | Path) -> ParsedStatement:
     zero_tx_stmt: ParsedStatement | None = None   # best rule-based result so far
 
     for ParserClass in _RULE_PARSERS:
-        parser = ParserClass(pdf_path)
+        parser = ParserClass(pdf_path, password=password)
         with parser:
             if not parser.can_parse():
                 continue
@@ -114,7 +158,7 @@ def detect_and_parse(pdf_path: str | Path) -> ParsedStatement:
             break   # One bank matched — don't try other rule-based parsers
 
     # ── LLM fallback ─────────────────────────────────────────────────────────
-    llm = LLMParser(pdf_path)
+    llm = LLMParser(pdf_path, password=password)
     with llm:
         if llm.can_parse():
             llm_stmt = llm.extract()

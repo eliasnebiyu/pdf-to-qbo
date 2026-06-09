@@ -26,15 +26,17 @@ class BaseParser(ABC):
 
     bank_name: str = "Generic Bank"
 
-    def __init__(self, pdf_path: str | Path):
+    def __init__(self, pdf_path: str | Path, password: str | None = None):
         self.pdf_path = Path(pdf_path)
+        self._password = password
         self._pdf: Optional[pdfplumber.PDF] = None
         self.warnings: list[str] = []
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def open(self):
-        self._pdf = pdfplumber.open(self.pdf_path)
+        kw = {"password": self._password} if self._password else {}
+        self._pdf = pdfplumber.open(self.pdf_path, **kw)
         return self
 
     def close(self):
