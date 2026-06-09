@@ -26,6 +26,7 @@ from src.parser.banks.fifth_third import FifthThirdParser
 from src.parser.banks.generic import GenericParser
 from src.parser.banks.llm_parser import LLMParser
 from src.models import ParsedStatement
+from src.utils.ocr import is_scanned_pdf, ocr_pdf
 
 # Rule-based parsers tried in priority order
 _RULE_PARSERS: list[type[BaseParser]] = [
@@ -65,6 +66,32 @@ def detect_and_parse(pdf_path: str | Path) -> ParsedStatement:
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
     if pdf_path.suffix.lower() != ".pdf":
         raise ValueError(f"Expected a .pdf file, got: {pdf_path.suffix}")
+
+    # ── OCR pre-check ─────────────────────────────────────────────────────────
+    # If the PDF is scanned (image-based), pdfplumber extracts no text and all
+    # rule-based parsers will return 0 transactions.  Run OCR first so the
+    # extracted text can flow through the normal parser pipeline.
+    _ocr_engine: str = ""
+    if is_scanned_pdf(pdf_path):
+        ocr_text, _ocr_engine = ocr_pdf(pdf_path)
+        if not ocr_text:
+            # No OCR available — raise a clear, actionable error
+            raise ValueError(
+                "This PDF appears to be a scanned image with no extractable text. "
+                "To process scanned statements set ANTHROPIC_API_KEY (uses Claude "
+                "vision) or install the tesseract OCR engine."
+            )
+        # Inject OCR text into a temporary text file so the LLM parser can use it
+        # (rule-based parsers need pdfplumber's per-page extraction)
+        from src.parser.banks.llm_parser import LLMParser as _LLM
+        llm = _LLM(pdf_path, injected_text=ocr_text)
+        with llm:
+            if llm.can_parse():
+                stmt = llm.extract()
+                if stmt:
+                    stmt.warnings.insert(0, f"Scanned PDF — text extracted via OCR ({_ocr_engine}).")
+                    return stmt
+        raise ValueError("Scanned PDF: OCR extracted text but no transactions could be parsed.")
 
     zero_tx_stmt: ParsedStatement | None = None   # best rule-based result so far
 

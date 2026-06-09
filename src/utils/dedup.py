@@ -236,3 +236,66 @@ def dedup_across_pages(
             warn(f"Page {i+1}: removed {overlap} cross-page duplicate(s).")
 
     return merged
+
+
+# ── Cross-statement deduplication ─────────────────────────────────────────────
+
+def merge_statements(
+    statements: list,          # list[ParsedStatement] — avoid circular import
+    warn: Optional[Callable[[str], None]] = None,
+    window_days: int = 3,
+) -> list[Transaction]:
+    """
+    Merge transactions from multiple statements (e.g. Jan + Feb + Mar)
+    and remove cross-statement duplicates.
+
+    A transaction is considered a cross-statement duplicate when:
+      - Same amount (exact)
+      - Same description (exact, case-insensitive)
+      - Date within ``window_days`` of an already-seen transaction
+        (handles statement boundary overlap where the last day of Jan
+         appears in both the Jan and Feb files)
+
+    Args:
+        statements:  list of ParsedStatement objects (already individually cleaned)
+        warn:        warning callback
+        window_days: max day difference to consider a near-date duplicate
+
+    Returns:
+        Sorted, deduplicated list of Transaction objects
+    """
+    from datetime import timedelta
+
+    all_txns: list[Transaction] = []
+    for stmt in statements:
+        all_txns.extend(stmt.transactions)
+
+    # Sort by date first so boundary duplicates are adjacent
+    all_txns.sort(key=lambda t: t.date)
+
+    result: list[Transaction] = []
+    # Index: (rounded_amount, desc_lower) → list of dates already seen
+    seen: dict[tuple, list] = {}
+    removed = 0
+
+    for tx in all_txns:
+        key = (round(tx.amount, 2), tx.description.strip().lower())
+        existing_dates = seen.get(key, [])
+
+        is_dup = any(
+            abs((tx.date - d).days) <= window_days
+            for d in existing_dates
+        )
+
+        if is_dup:
+            removed += 1
+            continue
+
+        existing_dates.append(tx.date)
+        seen[key] = existing_dates
+        result.append(tx)
+
+    if warn and removed:
+        warn(f"Cross-statement dedup removed {removed} duplicate transaction(s).")
+
+    return result

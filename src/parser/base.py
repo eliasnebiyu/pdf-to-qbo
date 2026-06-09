@@ -97,7 +97,12 @@ class BaseParser(ABC):
         ]
 
     def extract_account_id(self, text: str) -> str:
-        """Try to extract account number (last 4 digits common pattern)."""
+        """
+        Try to extract account number and mask it to last 4 digits.
+
+        We always return only the last 4 digits — never a full account
+        number — so the exported OFX/CSV doesn't expose sensitive data.
+        """
         patterns = [
             r"account\s+(?:number|#|no\.?)[:\s]+[*x]+(\d{4})",
             r"account\s+(?:number|#|no\.?)[:\s]+(\d{4,17})",
@@ -107,7 +112,8 @@ class BaseParser(ABC):
         for pat in patterns:
             m = re.search(pat, text, re.I)
             if m:
-                return m.group(1)
+                raw = re.sub(r"[\s\-]", "", m.group(1))
+                return f"****{raw[-4:]}" if len(raw) > 4 else raw
         return ""
 
     def warn(self, msg: str):

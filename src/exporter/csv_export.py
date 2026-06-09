@@ -46,7 +46,7 @@ def to_csv(statement: ParsedStatement, qbo_format: bool = True) -> str:
                 "Original Description": tx.description,
                 "Amount":               f"{tx.amount:.2f}",
                 "Transaction Type":     "debit" if tx.amount < 0 else "credit",
-                "Category":             "",
+                "Category":             tx.category or "",
                 "Account Name":         statement.account.bank_name,
                 "Labels":               "",
                 "Notes":                tx.memo or "",

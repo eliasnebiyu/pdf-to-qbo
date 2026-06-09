@@ -43,7 +43,8 @@ class Transaction(BaseModel):
     fit_id:      Optional[str]    = None  # unique ID for OFX deduplication
     memo:        Optional[str]    = None
     check_num:   Optional[str]    = None
-    source_page: Optional[int]   = None  # 1-indexed PDF page this tx was found on
+    source_page: Optional[int]    = None  # 1-indexed PDF page this tx was found on
+    category:    Optional[str]    = None  # suggested QBO expense category
 
     @field_validator("amount", mode="before")
     @classmethod

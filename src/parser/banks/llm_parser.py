@@ -140,16 +140,21 @@ class LLMParser(BaseParser):
     Claude API-powered parser.  Used as a fallback when:
       • No rule-based parser matched (unknown bank)
       • A rule-based parser matched but returned 0 transactions (layout change)
+      • The PDF is scanned (OCR text injected via injected_text)
     """
 
     bank_name = "LLM (Claude)"
+
+    def __init__(self, pdf_path, injected_text: str | None = None):
+        super().__init__(pdf_path)
+        self._injected_text = injected_text
 
     def can_parse(self) -> bool:
         """Available only when the SDK is installed and an API key is set."""
         return _SDK_AVAILABLE and bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     def extract(self) -> ParsedStatement:
-        text = self.full_text
+        text = self._injected_text if self._injected_text is not None else self.full_text
 
         if not text.strip():
             self.warn("LLM parser: PDF produced no extractable text (scanned/image PDF?).")

@@ -1,5 +1,6 @@
 anthropic>=0.40.0
 pdfplumber==0.11.4
+pdf2image>=1.17.0
 camelot-py==0.11.0
 pydantic==2.7.1
 click==8.1.7
