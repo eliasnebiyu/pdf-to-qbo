@@ -24,6 +24,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
+// ─── API key storage ─────────────────────────────────────────────────────────
+const API_KEY_STORAGE = "pdfqbo_api_key";
+const getStoredKey  = () => localStorage.getItem(API_KEY_STORAGE) || "";
+const saveStoredKey = (k) => localStorage.setItem(API_KEY_STORAGE, k.trim());
+
 // ─── All supported OFX transaction types ──────────────────────────────────────
 const TX_TYPES = [
   "DEBIT", "CREDIT", "INT", "DIV", "FEE",
@@ -617,6 +622,61 @@ const css = `
   }
   .split-total span { color: var(--white-2); font-weight: 500; }
 
+  /* ── API key modal ────────────────────────────────────────── */
+  .key-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.72);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999;
+  }
+  .key-modal {
+    background: var(--ink-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 32px;
+    width: 420px;
+  }
+  .key-modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .key-modal p  { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+  .key-input {
+    width: 100%;
+    background: var(--ink-3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--white);
+    outline: none;
+    margin-bottom: 14px;
+  }
+  .key-input:focus { border-color: var(--blue); }
+  .key-input::placeholder { color: var(--muted); }
+  .key-hint {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    background: var(--ink-3);
+    border: 1px solid var(--border-lt);
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-bottom: 16px;
+    line-height: 1.6;
+  }
+  .key-hint code { color: var(--blue); }
+  .key-topbar-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    padding: 3px 8px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .key-topbar-btn:hover { color: var(--white); border-color: var(--subtle); }
+
   /* ── Draft / session restore banner ──────────────────────── */
   .draft-banner {
     display: flex;
@@ -926,7 +986,7 @@ function ExportModal({ transactions, meta, onClose }) {
     setExporting(true);
     setError(null);
     try {
-      const res = await fetch("/api/export", {
+      const res = await apiFetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1001,6 +1061,44 @@ function ExportModal({ transactions, meta, onClose }) {
   );
 }
 
+// ── API Key Modal ─────────────────────────────────────────────────────────────
+function ApiKeyModal({ onSave }) {
+  const [val, setVal] = useState("");
+  return (
+    <div className="key-overlay">
+      <div className="key-modal">
+        <h2>🔑 Enter your API key</h2>
+        <p>
+          All PDF conversions require an API key. Get a free key by running
+          this command once, then paste the key below.
+        </p>
+        <div className="key-hint">
+          <code>curl -X POST http://localhost:8000/auth/register \</code><br/>
+          <code>&nbsp;&nbsp;-H "Content-Type: application/json" \</code><br/>
+          <code>&nbsp;&nbsp;-d '{`{"email":"you@example.com"}`}'</code>
+        </div>
+        <input
+          className="key-input"
+          placeholder="qbo_..."
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && val.startsWith("qbo_") && onSave(val)}
+          autoFocus
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn btn-primary"
+            disabled={!val.trim()}
+            onClick={() => onSave(val)}
+          >
+            Save key →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ReviewUI({
   pdfFile:       pdfFileProp  = null,
@@ -1032,6 +1130,22 @@ export default function ReviewUI({
   const [hoveredId,     setHoveredId]     = useState(null);
   const fileInputRef = useRef(null);
   const pageRefs     = useRef({});
+
+  // ── API key ────────────────────────────────────────────────────
+  const [apiKey,       setApiKey]       = useState(getStoredKey);
+  const [showKeyModal, setShowKeyModal] = useState(!getStoredKey());
+
+  const saveApiKey = (k) => {
+    saveStoredKey(k);
+    setApiKey(k.trim());
+    setShowKeyModal(false);
+  };
+
+  // Authenticated fetch — attaches X-API-Key to every request
+  const apiFetch = useCallback((url, opts = {}) => {
+    const headers = { ...(opts.headers || {}), "X-API-Key": apiKey };
+    return fetch(url, { ...opts, headers });
+  }, [apiKey]);
 
   // ── Session persistence (localStorage) ────────────────────────
   const DRAFT_KEY = "pdfqbo_draft_v1";
@@ -1186,9 +1300,10 @@ export default function ReviewUI({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/preview", { method: "POST", body: formData });
+      const res = await apiFetch("/api/preview", { method: "POST", body: formData });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Failed to parse PDF" }));
+        if (res.status === 401) { setShowKeyModal(true); throw new Error("Invalid or missing API key."); }
         throw new Error(err.detail || "Failed to parse PDF");
       }
       const data = await res.json();
@@ -1199,7 +1314,7 @@ export default function ReviewUI({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiFetch]);
 
   // ── Multi-file handler ─────────────────────────────────────────
   // Calls /preview for each file, then merges + client-side deduplicates
@@ -1226,7 +1341,7 @@ export default function ReviewUI({
       try {
         const formData = new FormData();
         formData.append("file", pdfs[i]);
-        const res = await fetch("/api/preview", { method: "POST", body: formData });
+        const res = await apiFetch("/api/preview", { method: "POST", body: formData });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: "Failed" }));
           allWarnings.push(`${pdfs[i].name}: ${err.detail || "Failed to parse"}`);
@@ -1342,6 +1457,9 @@ export default function ReviewUI({
   return (
     <div className="review-root">
 
+      {/* API key modal — shown on first visit or when key is missing */}
+      {showKeyModal && <ApiKeyModal onSave={saveApiKey} />}
+
       {/* Draft restore banner */}
       {draftBanner && (
         <div className="draft-banner">
@@ -1377,6 +1495,10 @@ export default function ReviewUI({
           </div>
         )}
         <div className="topbar-actions">
+          <button className="key-topbar-btn" onClick={() => setShowKeyModal(true)}
+            title={apiKey || "No API key set"}>
+            🔑 {apiKey ? `…${apiKey.slice(-6)}` : "Add key"}
+          </button>
           <button className="btn" onClick={() => fileInputRef.current?.click()}>
             ↑ Upload PDF
           </button>
