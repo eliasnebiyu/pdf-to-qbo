@@ -23,12 +23,21 @@ from src.parser.banks.us_bank import USBankParser
 from src.parser.banks.pnc import PNCParser
 from src.parser.banks.amex import AmexParser
 from src.parser.banks.fifth_third import FifthThirdParser
+from src.parser.banks.capital_one import CapitalOneParser
+from src.parser.banks.td_bank import TDBankParser
+from src.parser.banks.truist import TruistParser
+from src.parser.banks.navy_federal import NavyFederalParser
+from src.parser.banks.ally import AllyParser
+from src.parser.banks.schwab import SchwabParser
+from src.parser.banks.usaa import USAAParser
+from src.parser.banks.fidelity import FidelityParser
 from src.parser.banks.generic import GenericParser
 from src.parser.banks.llm_parser import LLMParser
 from src.models import ParsedStatement
 from src.utils.ocr import is_scanned_pdf, ocr_pdf
 
-# Rule-based parsers tried in priority order
+# Rule-based parsers tried in priority order.
+# More specific / harder-to-false-positive parsers come first.
 _RULE_PARSERS: list[type[BaseParser]] = [
     ChaseParser,
     BofAParser,
@@ -36,6 +45,14 @@ _RULE_PARSERS: list[type[BaseParser]] = [
     AmexParser,          # before US Bank — Amex PDFs mention "US bank" in boilerplate
     USBankParser,
     WellsFargoParser,    # after US Bank — US Bank PDFs may contain "Wells Fargo" in tx descriptions
+    CapitalOneParser,
+    TDBankParser,
+    TruistParser,        # catches BB&T and SunTrust legacy statements too
+    NavyFederalParser,
+    AllyParser,
+    SchwabParser,
+    USAAParser,
+    FidelityParser,      # strong-marker check avoids false positives on generic "fidelity"
     KembaParser,
     PNCParser,
     FifthThirdParser,

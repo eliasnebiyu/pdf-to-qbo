@@ -617,6 +617,21 @@ const css = `
   }
   .split-total span { color: var(--white-2); font-weight: 500; }
 
+  /* ── Draft / session restore banner ──────────────────────── */
+  .draft-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    background: var(--amber-dim);
+    border-bottom: 1px solid var(--amber);
+    font-size: 13px;
+    color: var(--amber);
+    flex-shrink: 0;
+  }
+  .draft-banner-text { flex: 1; }
+  .draft-banner strong { font-weight: 600; }
+
   /* scrollbar global */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -1018,6 +1033,63 @@ export default function ReviewUI({
   const fileInputRef = useRef(null);
   const pageRefs     = useRef({});
 
+  // ── Session persistence (localStorage) ────────────────────────
+  const DRAFT_KEY = "pdfqbo_draft_v1";
+  const [draftBanner, setDraftBanner] = useState(false);
+
+  // On mount: check for a saved draft
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) {
+        const { transactions: savedTxns, meta: savedMeta, pdfName: savedName } = JSON.parse(saved);
+        if (savedTxns?.length > 0) {
+          setDraftBanner({ txns: savedTxns, meta: savedMeta, name: savedName });
+        }
+      }
+    } catch (_) { /* ignore corrupt draft */ }
+  }, []);
+
+  // Auto-save draft whenever transactions or meta change (debounced 1 s)
+  useEffect(() => {
+    if (transactions.length === 0) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          transactions,
+          meta,
+          pdfName,
+          savedAt: new Date().toISOString(),
+        }));
+      } catch (_) { /* storage full — ignore */ }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [transactions, meta, pdfName]);
+
+  const resumeDraft = () => {
+    if (!draftBanner) return;
+    setTransactions(draftBanner.txns);
+    setMeta(draftBanner.meta || {});
+    setPdfName(draftBanner.name || "Restored draft");
+    setIsMultiFile(!!(draftBanner.name?.includes("file")));
+    setDraftBanner(false);
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setDraftBanner(false);
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setTransactions([]);
+    setMeta({});
+    setPdfFile(null);
+    setPdfName(null);
+    setIsMultiFile(false);
+    setApiError(null);
+  };
+
   // ── Inject styles once ─────────────────────────────────────────
   useEffect(() => {
     const id = "review-ui-styles";
@@ -1270,6 +1342,29 @@ export default function ReviewUI({
   return (
     <div className="review-root">
 
+      {/* Draft restore banner */}
+      {draftBanner && (
+        <div className="draft-banner">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2.5l1.5 1.5a1 1 0 01-1.4 1.4l-1.8-1.8A1 1 0 017 8.5V6a1 1 0 011-1z"
+              fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
+          </svg>
+          <span className="draft-banner-text">
+            <strong>Unsaved session found</strong> — {draftBanner.txns.length} transactions
+            {draftBanner.name ? ` from "${draftBanner.name}"` : ""}.
+            Restore it or start fresh?
+          </span>
+          <button className="btn btn-primary" style={{ padding: "4px 14px", fontSize: 12 }}
+            onClick={resumeDraft}>
+            Resume
+          </button>
+          <button className="btn" style={{ padding: "4px 14px", fontSize: 12 }}
+            onClick={discardDraft}>
+            Discard
+          </button>
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="topbar">
         <div className="topbar-brand">
@@ -1294,6 +1389,13 @@ export default function ReviewUI({
             onChange={e => handleFiles(e.target.files)}
           />
           <button className="btn" onClick={confirmAll}>✓ Confirm clean</button>
+          {transactions.length > 0 && (
+            <button className="btn" onClick={clearSession}
+              style={{ color: "var(--muted)", borderColor: "var(--border-lt)" }}
+              title="Clear session and discard draft">
+              ✕ Clear
+            </button>
+          )}
           <button
             className="btn btn-primary"
             disabled={flagged.length > 0}

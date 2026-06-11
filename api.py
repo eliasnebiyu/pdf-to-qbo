@@ -506,6 +506,116 @@ async def batch_convert(
     )
 
 
+# ── Batch preview (JSON, server-side dedup) ───────────────────────────────────
+
+@app.post("/batch-preview")
+@limiter.limit("10/minute")
+async def batch_preview(
+    request:    Request,
+    files:      List[UploadFile] = File(..., description="One or more bank statement PDFs"),
+    start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
+    end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
+    categorize: bool             = Query(default=True, description="Add category suggestions"),
+    password:   Optional[str]   = Query(default=None, description="Password for all PDFs"),
+):
+    """
+    Upload multiple PDFs and get a **single merged JSON** response with all
+    transactions de-duplicated server-side (same logic as ``/batch``).
+
+    Unlike calling ``/preview`` per file and merging in the browser, this
+    endpoint runs the full cross-statement dedup pipeline and returns one
+    clean transaction list ready for the ReviewUI.
+
+    Each successfully parsed PDF counts as **1 conversion** against quota.
+    """
+    # ── Auth: validate key + pre-check quota ─────────────────────────────────
+    api_key = request.headers.get("x-api-key", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key required. Include it as the X-API-Key header.",
+        )
+    pdf_count = sum(
+        1 for f in files
+        if f.filename and f.filename.lower().endswith(".pdf")
+    )
+    validate_and_check_quota(api_key, count=max(1, pdf_count))
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 files per batch.")
+
+    statements:   list       = []
+    all_warnings: list[str] = []
+    tmp_paths:    list[Path] = []
+
+    for upload in files:
+        if not upload.filename or not upload.filename.lower().endswith(".pdf"):
+            all_warnings.append(f"Skipped non-PDF: {upload.filename}")
+            continue
+        contents = await upload.read()
+        if len(contents) > _MAX_UPLOAD_BYTES:
+            all_warnings.append(f"Skipped oversized file: {upload.filename}")
+            continue
+        tmp_path = _save_upload(contents)
+        tmp_paths.append(tmp_path)
+        try:
+            stmt = detect_and_parse(tmp_path, password=password)
+            statements.append(stmt)
+            all_warnings.extend([f"{upload.filename}: {w}" for w in stmt.warnings])
+        except Exception as e:
+            all_warnings.append(f"Failed to parse {upload.filename}: {e}")
+
+    for p in tmp_paths:
+        p.unlink(missing_ok=True)
+
+    if not statements:
+        raise HTTPException(
+            status_code=422,
+            detail="No PDFs could be parsed. " + "; ".join(all_warnings),
+        )
+
+    # Charge quota
+    increment_usage(api_key, count=len(statements))
+
+    # ── Server-side merge + dedup ─────────────────────────────────────────────
+    warns: list[str] = []
+    merged_txns = merge_statements(statements, warn=warns.append)
+    all_warnings.extend(warns)
+    merged_txns = _filter_by_date(merged_txns, start_date, end_date)
+
+    if categorize:
+        use_llm = bool(os.getenv("ANTHROPIC_API_KEY"))
+        categorize_transactions(merged_txns, use_llm=use_llm)
+
+    # Build a representative merged account
+    primary = statements[0].account
+    merged_start = (
+        min(s.account.statement_start for s in statements if s.account.statement_start)
+        if any(s.account.statement_start for s in statements) else None
+    )
+    merged_end = (
+        max(s.account.statement_end for s in statements if s.account.statement_end)
+        if any(s.account.statement_end for s in statements) else None
+    )
+
+    return {
+        "bank":              primary.bank_name,
+        "account_id":        primary.account_id,
+        "account_type":      str(primary.account_type),
+        "statement_start":   str(merged_start),
+        "statement_end":     str(merged_end),
+        "file_count":        len(statements),
+        "transaction_count": len(merged_txns),
+        "total_debits":      float(sum(t.amount for t in merged_txns if t.amount < 0)),
+        "total_credits":     float(sum(t.amount for t in merged_txns if t.amount > 0)),
+        "parser_used":       "batch-preview",
+        "warnings":          all_warnings,
+        "transactions":      [_tx_to_dict(tx) for tx in merged_txns],
+    }
+
+
 # ── Statement preview (JSON) ──────────────────────────────────────────────────
 
 @app.post("/preview")
