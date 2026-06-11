@@ -1,47 +1,106 @@
 """
-PDF-to-QBO REST API
+PDF-to-QBO REST API  v1.2
+==========================
 
-Endpoints:
-  POST /convert          — upload single PDF, get OFX/QFX/CSV back
-  POST /batch            — upload multiple PDFs, get merged OFX/QFX/CSV
-  POST /preview          — upload PDF, get JSON transaction list (for ReviewUI)
-  POST /export           — accept reviewed JSON transactions, get OFX/QFX/CSV
-  GET  /health           — health check for Railway
-  GET  /banks            — list supported banks
+Public endpoints  (no API key required)
+----------------------------------------
+  GET  /health              Health check
+  GET  /banks               List supported banks
+  POST /auth/register       Issue a free API key
 
-Deploy on Railway:
-  Set ALLOWED_ORIGINS=https://your-frontend.railway.app
-  Set ANTHROPIC_API_KEY=sk-ant-...  (enables LLM fallback + OCR)
-  railway up
+Auth-required endpoints  (X-API-Key: <key> header)
+----------------------------------------------------
+  POST /convert             Upload single PDF → OFX/QFX/CSV      (1 conversion)
+  POST /batch               Upload multiple PDFs → merged export  (N conversions)
+  POST /preview             Upload PDF → JSON transaction list    (1 conversion)
+  POST /export              Reviewed JSON → OFX/QFX/CSV          (free — no PDF)
+  GET  /auth/usage          Plan, usage counter, quota info
+  POST /auth/checkout       Create Stripe checkout to upgrade plan
+
+Stripe webhook  (Stripe calls this directly — no API key needed)
+-----------------------------------------------------------------
+  POST /stripe/webhook
+
+Subscription tiers
+-------------------
+  free     :  10 conversions / 30-day period
+  starter  : 100 conversions / 30-day period  ($9/month)
+  pro      :  unlimited                       ($29/month)
+
+Rate limits  (per API key when authenticated, per IP otherwise)
+----------------------------------------------------------------
+  /auth/register           3 / hour
+  /convert, /preview      20 / minute
+  /batch                  10 / minute
+  /export                 30 / minute
+  /auth/usage, /checkout  10 / minute
+
+Deploy on Railway
+-----------------
+  ALLOWED_ORIGINS=https://your-frontend.railway.app
+  ANTHROPIC_API_KEY=sk-ant-...     (LLM fallback + OCR)
+  STRIPE_SECRET_KEY=sk_live_...
+  STRIPE_WEBHOOK_SECRET=whsec_...
+  STRIPE_PRICE_STARTER=price_...
+  STRIPE_PRICE_PRO=price_...
+  ADMIN_API_KEY=<long-random-secret>   (optional: bypasses all quotas)
 """
 import os
+import re
 import tempfile
 from datetime import date as date_type
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from src.auth import (
+    PLANS,
+    check_and_increment,
+    create_api_key,
+    increment_usage,
+    require_api_key,
+    validate_and_check_quota,
+    verify_key_only,
+)
+from src.billing import create_checkout_session, handle_webhook
+from src.exporter import to_csv, to_ofx
+from src.models import BankAccount, ParsedStatement, Transaction, TransactionType
 from src.parser import detect_and_parse, list_supported_banks
-from src.exporter import to_ofx, to_csv
-from src.models import Transaction, BankAccount, ParsedStatement, TransactionType
 from src.utils.categorize import categorize_transactions
-from src.utils.dedup import clean, merge_statements
+from src.utils.dedup import merge_statements
+
+# ── Rate limiter ───────────────────────────────────────────────────────────────
+
+
+def _rate_key(request: Request) -> str:
+    """Rate-limit by API key when present, otherwise by client IP."""
+    key = request.headers.get("x-api-key", "").strip()
+    return f"key:{key}" if key else f"ip:{get_remote_address(request)}"
+
+
+limiter = Limiter(key_func=_rate_key)
+
+# ── App ────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="PDF to QBO Converter",
     description="Convert bank statement PDFs to QuickBooks-compatible OFX/QFX/CSV",
-    version="1.1.0",
+    version="1.2.0",
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# Default: localhost dev servers.
-# Production: set ALLOWED_ORIGINS=https://your-frontend.com in Railway env vars.
-# Multiple origins: comma-separated  e.g. "https://app.example.com,https://www.example.com"
+
 _default_origins = [
     "http://localhost:5173",
     "http://localhost:4173",
@@ -114,72 +173,182 @@ def _tx_to_dict(tx: Transaction) -> dict:
     }
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
+# ── Health & metadata  (no auth) ──────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "pdf-to-qbo", "version": "1.1.0"}
+    return {"status": "ok", "service": "pdf-to-qbo", "version": "1.2.0"}
 
-
-# ── Supported banks ───────────────────────────────────────────────────────────
 
 @app.get("/banks")
 def banks():
     return {"supported_banks": list_supported_banks()}
 
 
+# ── Auth: register  (public, rate-limited per IP) ─────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: str
+
+
+@app.post("/auth/register", status_code=201)
+@limiter.limit("3/hour")
+def register(request: Request, body: RegisterRequest):
+    """
+    Issue a free API key tied to an email address.
+
+    The key is returned **once** — save it securely.
+    Passing it as the ``X-API-Key`` header authenticates all subsequent requests.
+
+    Rate-limited to 3 registrations per hour per IP to prevent spam.
+    """
+    email = body.email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+
+    key  = create_api_key(email, plan="free")
+    plan = PLANS["free"]
+    return {
+        "api_key":        key,
+        "email":          email,
+        "plan":           "free",
+        "monthly_limit":  plan["monthly_limit"],
+        "message": (
+            "Save this key — it will not be shown again. "
+            "Include it as the X-API-Key header on every request."
+        ),
+    }
+
+
+# ── Auth: usage info ──────────────────────────────────────────────────────────
+
+@app.get("/auth/usage")
+@limiter.limit("10/minute")
+def usage(request: Request, record: dict = Depends(verify_key_only)):
+    """Return the current plan, usage counter, and remaining quota for the key."""
+    plan_info = PLANS.get(record["plan"], PLANS["free"])
+    limit     = plan_info["monthly_limit"]
+    used      = record["conversions_used"]
+    return {
+        "plan":                  record["plan"],
+        "plan_label":            plan_info["label"],
+        "monthly_limit":         limit,
+        "conversions_used":      used,
+        "conversions_remaining": (limit - used) if limit is not None else None,
+        "period_start":          record["period_start"],
+        "status":                record["status"],
+        "stripe_customer_id":    record.get("stripe_customer_id"),
+    }
+
+
+# ── Auth: Stripe checkout ─────────────────────────────────────────────────────
+
+class CheckoutRequest(BaseModel):
+    plan:        Literal["starter", "pro"]
+    success_url: str
+    cancel_url:  str
+
+
+@app.post("/auth/checkout")
+@limiter.limit("10/minute")
+def checkout(
+    request: Request,
+    body:    CheckoutRequest,
+    record:  dict = Depends(verify_key_only),
+):
+    """
+    Create a Stripe Checkout session to upgrade to a paid plan.
+
+    Returns ``{"checkout_url": "https://checkout.stripe.com/..."}`` — redirect
+    the user there to enter card details.  On successful payment Stripe calls
+    ``POST /stripe/webhook`` and the API key is automatically upgraded.
+
+    Requires ``STRIPE_SECRET_KEY``, ``STRIPE_PRICE_STARTER``, and
+    ``STRIPE_PRICE_PRO`` environment variables to be configured.
+    """
+    url = create_checkout_session(
+        api_key=record["key"],
+        email=record["email"],
+        plan=body.plan,
+        success_url=body.success_url,
+        cancel_url=body.cancel_url,
+    )
+    return {"checkout_url": url, "plan": body.plan}
+
+
+# ── Stripe webhook  (called by Stripe, not the frontend) ─────────────────────
+
+@app.post("/stripe/webhook", include_in_schema=False)
+async def stripe_webhook(request: Request):
+    """
+    Stripe posts events here.  The signature is verified against
+    ``STRIPE_WEBHOOK_SECRET`` — requests with an invalid signature are
+    rejected with 400.
+
+    Handled events:
+      * checkout.session.completed       → upgrade plan
+      * invoice.payment_succeeded        → reactivate suspended key
+      * invoice.payment_failed           → suspend key
+      * customer.subscription.deleted   → cancel, revert to free
+    """
+    return await handle_webhook(request)
+
+
 # ── Single-file conversion ────────────────────────────────────────────────────
 
 @app.post("/convert")
+@limiter.limit("20/minute")
 async def convert(
-    file: UploadFile = File(..., description="Bank statement PDF"),
-    format: Literal["ofx", "qfx", "csv"] = Query(
+    request:    Request,
+    file:       UploadFile = File(..., description="Bank statement PDF"),
+    format:     Literal["ofx", "qfx", "csv"] = Query(
         default="ofx",
         description="Output format: ofx (QBO import), qfx (Quicken), csv",
     ),
     start_date: Optional[str] = Query(
         default=None,
-        description="Filter: only include transactions on/after this date (YYYY-MM-DD)",
+        description="Only include transactions on/after this date (YYYY-MM-DD)",
     ),
-    end_date: Optional[str] = Query(
+    end_date:   Optional[str] = Query(
         default=None,
-        description="Filter: only include transactions on/before this date (YYYY-MM-DD)",
+        description="Only include transactions on/before this date (YYYY-MM-DD)",
     ),
     categorize: bool = Query(
         default=True,
         description="Add QBO category suggestions to transactions",
     ),
-    password: Optional[str] = Query(
+    password:   Optional[str] = Query(
         default=None,
         description="Password to decrypt a password-protected PDF",
     ),
+    _auth:      dict = Depends(require_api_key),  # validates key + increments by 1
 ):
     """
     Upload a single bank statement PDF and receive a QBO-compatible file.
 
-    The returned file can be imported into QuickBooks Online via
-    Banking → Upload transactions.
+    Requires a valid API key (``X-API-Key`` header).
+    Counts as **1 conversion** against your monthly quota.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
     contents = await file.read()
     if len(contents) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {os.getenv('MAX_UPLOAD_MB', 50)}MB.")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {os.getenv('MAX_UPLOAD_MB', 50)} MB.",
+        )
 
     tmp_path = _save_upload(contents)
     try:
         statement = detect_and_parse(tmp_path, password=password)
     except Exception as e:
-        tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(e))
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    # Date range filter
     statement.transactions = _filter_by_date(statement.transactions, start_date, end_date)
 
-    # Category suggestions
     if categorize:
         use_llm = bool(os.getenv("ANTHROPIC_API_KEY"))
         categorize_transactions(statement.transactions, use_llm=use_llm)
@@ -212,33 +381,50 @@ async def convert(
 # ── Batch conversion ──────────────────────────────────────────────────────────
 
 @app.post("/batch")
+@limiter.limit("10/minute")
 async def batch_convert(
-    files: List[UploadFile] = File(..., description="One or more bank statement PDFs"),
-    format: Literal["ofx", "qfx", "csv"] = Query(default="ofx"),
-    start_date: Optional[str] = Query(default=None, description="Filter start date YYYY-MM-DD"),
-    end_date:   Optional[str] = Query(default=None, description="Filter end date YYYY-MM-DD"),
-    categorize: bool          = Query(default=True),
-    password:   Optional[str] = Query(default=None, description="Password applied to all uploaded PDFs"),
+    request:    Request,
+    files:      List[UploadFile] = File(..., description="One or more bank statement PDFs"),
+    format:     Literal["ofx", "qfx", "csv"] = Query(default="ofx"),
+    start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
+    end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
+    categorize: bool             = Query(default=True),
+    password:   Optional[str]   = Query(default=None, description="Password applied to all PDFs"),
 ):
     """
     Upload multiple PDFs at once (e.g. 12 months of statements).
 
-    Transactions are merged, sorted by date, cross-statement duplicates
-    removed (handles statement boundary overlap), then exported as a
-    single file.
+    Each successfully parsed PDF counts as **1 conversion** against your quota.
+    Transactions are merged, sorted, cross-statement duplicates removed, then
+    exported as a single file.
     """
+    # ── Auth: validate key + pre-check quota for the file count ───────────────
+    api_key = request.headers.get("x-api-key", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key required. Include it as the X-API-Key header.",
+        )
+
+    pdf_count = sum(
+        1 for f in files
+        if f.filename and f.filename.lower().endswith(".pdf")
+    )
+    # Pre-check (no increment yet) — ensures they can afford the whole batch
+    validate_and_check_quota(api_key, count=max(1, pdf_count))
+
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
     if len(files) > 50:
         raise HTTPException(status_code=400, detail="Maximum 50 files per batch.")
 
-    statements = []
-    all_warnings: list[str] = []
-    tmp_paths: list[Path] = []
+    statements:   list        = []
+    all_warnings: list[str]  = []
+    tmp_paths:    list[Path] = []
 
     for upload in files:
         if not upload.filename or not upload.filename.lower().endswith(".pdf"):
-            all_warnings.append(f"Skipped non-PDF file: {upload.filename}")
+            all_warnings.append(f"Skipped non-PDF: {upload.filename}")
             continue
 
         contents = await upload.read()
@@ -260,22 +446,24 @@ async def batch_convert(
         p.unlink(missing_ok=True)
 
     if not statements:
-        raise HTTPException(status_code=422, detail="No PDFs could be parsed. " + "; ".join(all_warnings))
+        raise HTTPException(
+            status_code=422,
+            detail="No PDFs could be parsed. " + "; ".join(all_warnings),
+        )
 
-    # Merge + cross-statement dedup
+    # Increment by the number of files we actually parsed
+    increment_usage(api_key, count=len(statements))
+
+    # ── Merge + dedup ─────────────────────────────────────────────────────────
     warns: list[str] = []
     merged_txns = merge_statements(statements, warn=warns.append)
     all_warnings.extend(warns)
-
-    # Date range filter
     merged_txns = _filter_by_date(merged_txns, start_date, end_date)
 
-    # Category suggestions
     if categorize:
         use_llm = bool(os.getenv("ANTHROPIC_API_KEY"))
         categorize_transactions(merged_txns, use_llm=use_llm)
 
-    # Build a merged statement using the first statement's account info
     primary = statements[0].account
     merged_stmt = ParsedStatement(
         account=BankAccount(
@@ -321,19 +509,24 @@ async def batch_convert(
 # ── Statement preview (JSON) ──────────────────────────────────────────────────
 
 @app.post("/preview")
+@limiter.limit("20/minute")
 async def preview(
-    file: UploadFile = File(..., description="Bank statement PDF"),
+    request:    Request,
+    file:       UploadFile = File(..., description="Bank statement PDF"),
     start_date: Optional[str] = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str] = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool          = Query(default=True, description="Add category suggestions"),
-    password:   Optional[str] = Query(default=None, description="Password for a password-protected PDF"),
+    password:   Optional[str] = Query(default=None, description="Password for encrypted PDF"),
+    _auth:      dict          = Depends(require_api_key),
 ):
     """
     Upload a PDF and get a JSON summary of extracted transactions.
     Used by the ReviewUI for previewing and editing before export.
+
+    Counts as **1 conversion** against your monthly quota.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files supported.")
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
     contents = await file.read()
     tmp_path = _save_upload(contents)
@@ -341,15 +534,12 @@ async def preview(
     try:
         statement = detect_and_parse(tmp_path, password=password)
     except Exception as e:
-        tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(e))
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    # Date range filter
     statement.transactions = _filter_by_date(statement.transactions, start_date, end_date)
 
-    # Category suggestions
     if categorize:
         use_llm = bool(os.getenv("ANTHROPIC_API_KEY"))
         categorize_transactions(statement.transactions, use_llm=use_llm)
@@ -384,20 +574,27 @@ class ExportTransaction(BaseModel):
 
 class ExportRequest(BaseModel):
     format:          Literal["ofx", "qfx", "csv"] = "ofx"
-    bank:            str           = "Unknown"
-    account_id:      str           = "unknown"
-    account_type:    str           = "CHECKING"
-    statement_start: Optional[str] = None
-    statement_end:   Optional[str] = None
+    bank:            str             = "Unknown"
+    account_id:      str             = "unknown"
+    account_type:    str             = "CHECKING"
+    statement_start: Optional[str]  = None
+    statement_end:   Optional[str]  = None
     closing_balance: Optional[float] = None
     transactions:    List[ExportTransaction]
 
 
 @app.post("/export")
-async def export_transactions(req: ExportRequest):
+@limiter.limit("30/minute")
+async def export_transactions(
+    request: Request,
+    req:     ExportRequest,
+    _auth:   dict = Depends(verify_key_only),  # auth required but quota NOT incremented
+):
     """
     Accept reviewed/edited transactions as JSON and return an OFX/QFX/CSV file.
     Called by the ReviewUI after the user has corrected any flagged transactions.
+
+    Does **not** count against your conversion quota (no PDF is parsed here).
     """
     from src.models import AccountType
 

@@ -39,3 +39,9 @@ frontend/node_modules/
 *.ofx
 *.qbo
 *.csv
+
+# SQLite database (API keys + usage — never commit)
+data/
+*.db
+*.db-shm
+*.db-wal
