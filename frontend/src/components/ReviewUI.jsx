@@ -622,7 +622,7 @@ const css = `
   }
   .split-total span { color: var(--white-2); font-weight: 500; }
 
-  /* ── API key modal ────────────────────────────────────────── */
+  /* ── API key / registration modal ───────────────────────── */
   .key-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.72);
@@ -634,10 +634,68 @@ const css = `
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 28px 32px;
-    width: 420px;
+    width: 460px;
+    max-width: calc(100vw - 40px);
   }
   .key-modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
   .key-modal p  { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+
+  /* Tabs */
+  .reg-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+    margin-top: 4px;
+  }
+  .reg-tab {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 7px 14px; margin-bottom: -1px;
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; transition: color .15s;
+  }
+  .reg-tab:hover { color: var(--white-2); }
+  .reg-tab.active { color: var(--white); border-bottom-color: var(--blue); }
+
+  /* Plan comparison pills */
+  .plan-pills {
+    display: flex; gap: 8px; margin-bottom: 16px;
+  }
+  .plan-pill {
+    flex: 1; background: var(--ink-3); border: 1px solid var(--border-lt);
+    border-radius: 6px; padding: 8px 10px; text-align: center;
+  }
+  .plan-pill-name { font-size: 11px; font-weight: 600; color: var(--subtle); text-transform: uppercase; letter-spacing: .04em; }
+  .plan-pill-price { font-size: 15px; font-weight: 700; color: var(--white); margin: 2px 0; }
+  .plan-pill-limit { font-size: 11px; color: var(--muted); }
+  .plan-pill.highlight { border-color: var(--blue-dim); background: var(--blue-dim); }
+  .plan-pill.highlight .plan-pill-name { color: var(--blue); }
+
+  /* Generated key display */
+  .key-display {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--ink-3); border: 1px solid var(--green-dim);
+    border-radius: 6px; padding: 8px 12px; margin-bottom: 8px;
+  }
+  .key-display code {
+    flex: 1; font-family: var(--mono); font-size: 11px;
+    color: var(--green); word-break: break-all;
+  }
+  .key-display button {
+    flex-shrink: 0; background: none; border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 8px; font-size: 11px;
+    color: var(--muted); cursor: pointer; white-space: nowrap;
+  }
+  .key-display button:hover { color: var(--white); }
+
+  /* Privacy note */
+  .privacy-note {
+    margin-top: 18px; padding: 10px 12px;
+    background: var(--ink-3); border-radius: 6px;
+    font-size: 11px; color: var(--muted); line-height: 1.5;
+  }
+  .privacy-note a { color: var(--blue); text-decoration: none; }
+  .privacy-note a:hover { text-decoration: underline; }
+
   .key-input {
     width: 100%;
     background: var(--ink-3);
@@ -652,18 +710,9 @@ const css = `
   }
   .key-input:focus { border-color: var(--blue); }
   .key-input::placeholder { color: var(--muted); }
-  .key-hint {
-    font-size: 11px;
-    color: var(--muted);
-    font-family: var(--mono);
-    background: var(--ink-3);
-    border: 1px solid var(--border-lt);
-    border-radius: 4px;
-    padding: 6px 10px;
-    margin-bottom: 16px;
-    line-height: 1.6;
-  }
-  .key-hint code { color: var(--blue); }
+  .key-error { font-size: 12px; color: var(--red); margin: -10px 0 10px; }
+
+  /* Topbar key/usage controls */
   .key-topbar-btn {
     font-family: var(--mono);
     font-size: 11px;
@@ -676,6 +725,15 @@ const css = `
     display: flex; align-items: center; gap: 4px;
   }
   .key-topbar-btn:hover { color: var(--white); border-color: var(--subtle); }
+  .usage-pill {
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 7px; border-radius: 10px;
+    border: 1px solid var(--border-lt); color: var(--muted);
+    display: flex; align-items: center; gap: 3px;
+  }
+  .usage-pill.ok   { color: var(--green); border-color: var(--green-dim); }
+  .usage-pill.warn { color: var(--amber); border-color: var(--amber-dim); }
+  .usage-pill.full { color: var(--red);   border-color: var(--red-dim);   }
 
   /* ── Draft / session restore banner ──────────────────────── */
   .draft-banner {
@@ -1063,36 +1121,181 @@ function ExportModal({ transactions, meta, onClose }) {
 
 // ── API Key Modal ─────────────────────────────────────────────────────────────
 function ApiKeyModal({ onSave }) {
-  const [val, setVal] = useState("");
+  const [tab,         setTab]        = useState("register");
+  const [email,       setEmail]      = useState("");
+  const [busy,        setBusy]       = useState(false);
+  const [regError,    setRegError]   = useState(null);
+  const [newKey,      setNewKey]     = useState(null);
+  const [copied,      setCopied]     = useState(false);
+  const [existingVal, setExistingVal] = useState("");
+  const [pasteError,  setPasteError] = useState(null);
+
+  const handleRegister = async () => {
+    if (!email) return;
+    setBusy(true);
+    setRegError(null);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Registration failed");
+      setNewKey(data.api_key);
+    } catch (err) {
+      setRegError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(newKey).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handlePasteSave = () => {
+    if (!existingVal.trim()) return;
+    if (!existingVal.trim().startsWith("qbo_")) {
+      setPasteError("Keys start with qbo_ — double-check and try again.");
+      return;
+    }
+    onSave(existingVal);
+  };
+
+  // ── Success screen ────────────────────────────────────────────────────────
+  if (newKey) {
+    return (
+      <div className="key-overlay">
+        <div className="key-modal">
+          <h2>🎉 You're all set!</h2>
+          <p>
+            Your free API key is ready. <strong>Save it somewhere safe</strong> —
+            we can't show it again after you close this window.
+          </p>
+          <div className="key-display">
+            <code>{newKey}</code>
+            <button onClick={handleCopy}>{copied ? "✓ Copied" : "Copy"}</button>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 20 }}>
+            Free plan: <strong style={{ color: "var(--white-2)" }}>10 PDFs / month</strong>.
+            Upgrade anytime from the app.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button className="btn btn-primary" onClick={() => onSave(newKey)}>
+              Start converting →
+            </button>
+          </div>
+          <div className="privacy-note">
+            🔒 We never sell your data. PDFs processed by AI fallback are sent to
+            Anthropic's API (not used for training).{" "}
+            <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener noreferrer">
+              Anthropic privacy →
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main modal ────────────────────────────────────────────────────────────
   return (
     <div className="key-overlay">
       <div className="key-modal">
-        <h2>🔑 Enter your API key</h2>
-        <p>
-          All PDF conversions require an API key. Get a free key by running
-          this command once, then paste the key below.
-        </p>
-        <div className="key-hint">
-          <code>curl -X POST http://localhost:8000/auth/register \</code><br/>
-          <code>&nbsp;&nbsp;-H "Content-Type: application/json" \</code><br/>
-          <code>&nbsp;&nbsp;-d '{`{"email":"you@example.com"}`}'</code>
+        <h2>🔑 API key required</h2>
+        <p>All PDF conversions require an API key. Choose an option below.</p>
+
+        {/* Tabs */}
+        <div className="reg-tabs">
+          {[["register", "Get a free key"], ["existing", "I have a key"]].map(([id, label]) => (
+            <button
+              key={id}
+              className={`reg-tab${tab === id ? " active" : ""}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <input
-          className="key-input"
-          placeholder="qbo_..."
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && val.startsWith("qbo_") && onSave(val)}
-          autoFocus
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            className="btn btn-primary"
-            disabled={!val.trim()}
-            onClick={() => onSave(val)}
-          >
-            Save key →
-          </button>
+
+        {/* ── Register tab ── */}
+        {tab === "register" && (
+          <>
+            <div className="plan-pills">
+              <div className="plan-pill highlight">
+                <div className="plan-pill-name">Free</div>
+                <div className="plan-pill-price">$0</div>
+                <div className="plan-pill-limit">10 PDFs / mo</div>
+              </div>
+              <div className="plan-pill">
+                <div className="plan-pill-name">Starter</div>
+                <div className="plan-pill-price">$9</div>
+                <div className="plan-pill-limit">100 PDFs / mo</div>
+              </div>
+              <div className="plan-pill">
+                <div className="plan-pill-name">Pro</div>
+                <div className="plan-pill-price">$29</div>
+                <div className="plan-pill-limit">Unlimited</div>
+              </div>
+            </div>
+
+            <input
+              className="key-input"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setRegError(null); }}
+              onKeyDown={e => e.key === "Enter" && handleRegister()}
+              autoFocus
+            />
+            {regError && <p className="key-error">{regError}</p>}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                No credit card needed for free tier
+              </span>
+              <button
+                className="btn btn-primary"
+                disabled={!email || busy}
+                onClick={handleRegister}
+              >
+                {busy ? "Creating…" : "Get my free key →"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Existing key tab ── */}
+        {tab === "existing" && (
+          <>
+            <input
+              className="key-input"
+              placeholder="qbo_…"
+              value={existingVal}
+              onChange={e => { setExistingVal(e.target.value); setPasteError(null); }}
+              onKeyDown={e => e.key === "Enter" && handlePasteSave()}
+              autoFocus
+            />
+            {pasteError && <p className="key-error">{pasteError}</p>}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-primary"
+                disabled={!existingVal.trim()}
+                onClick={handlePasteSave}
+              >
+                Save key →
+              </button>
+            </div>
+          </>
+        )}
+
+        <div className="privacy-note">
+          🔒 PDFs processed by AI fallback are sent to Anthropic's API (not used for training).{" "}
+          <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener noreferrer">
+            Privacy policy →
+          </a>
         </div>
       </div>
     </div>
@@ -1134,12 +1337,22 @@ export default function ReviewUI({
   // ── API key ────────────────────────────────────────────────────
   const [apiKey,       setApiKey]       = useState(getStoredKey);
   const [showKeyModal, setShowKeyModal] = useState(!getStoredKey());
+  const [usage,        setUsage]        = useState(null); // { plan, plan_label, used, remaining, limit }
 
   const saveApiKey = (k) => {
     saveStoredKey(k);
     setApiKey(k.trim());
     setShowKeyModal(false);
   };
+
+  // Fetch quota info whenever the key changes
+  useEffect(() => {
+    if (!apiKey) { setUsage(null); return; }
+    fetch("/api/auth/usage", { headers: { "X-API-Key": apiKey } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setUsage(d))
+      .catch(() => {});
+  }, [apiKey]);
 
   // Authenticated fetch — attaches X-API-Key to every request
   const apiFetch = useCallback((url, opts = {}) => {
@@ -1309,12 +1522,19 @@ export default function ReviewUI({
       const data = await res.json();
       setMeta(data);
       setTransactions(data.transactions.map(tx => normaliseTx(tx, file.name)));
+      // Refresh quota display after a successful parse
+      if (apiKey) {
+        fetch("/api/auth/usage", { headers: { "X-API-Key": apiKey } })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d && setUsage(d))
+          .catch(() => {});
+      }
     } catch (err) {
       setApiError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, apiKey]);
 
   // ── Multi-file handler ─────────────────────────────────────────
   // Calls /preview for each file, then merges + client-side deduplicates
@@ -1499,6 +1719,19 @@ export default function ReviewUI({
             title={apiKey || "No API key set"}>
             🔑 {apiKey ? `…${apiKey.slice(-6)}` : "Add key"}
           </button>
+          {usage && (() => {
+            const isUnlimited = usage.limit === null;
+            const pct = isUnlimited ? 0 : usage.used / usage.limit;
+            const cls = isUnlimited ? "ok" : pct >= 1 ? "full" : pct >= 0.8 ? "warn" : "ok";
+            const label = isUnlimited
+              ? `${usage.plan_label} · ∞`
+              : `${usage.plan_label} · ${usage.remaining}/${usage.limit}`;
+            return (
+              <span className={`usage-pill ${cls}`} title={`${usage.used} used this period`}>
+                {label}
+              </span>
+            );
+          })()}
           <button className="btn" onClick={() => fileInputRef.current?.click()}>
             ↑ Upload PDF
           </button>
