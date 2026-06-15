@@ -735,6 +735,46 @@ const css = `
   .usage-pill.warn { color: var(--amber); border-color: var(--amber-dim); }
   .usage-pill.full { color: var(--red);   border-color: var(--red-dim);   }
 
+  /* ── Upgrade modal ───────────────────────────────────────── */
+  .upgrade-modal {
+    background: var(--ink-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 32px;
+    width: 480px;
+    max-width: calc(100vw - 40px);
+  }
+  .upgrade-modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .upgrade-modal > p { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+  .plan-cards { display: flex; gap: 12px; margin-bottom: 16px; }
+  .plan-card {
+    flex: 1; background: var(--ink-3);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .plan-card.featured { border-color: var(--blue); background: var(--blue-dim); }
+  .plan-card-badge {
+    font-size: 9px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--blue); margin-bottom: 2px;
+  }
+  .plan-card-name { font-size: 14px; font-weight: 600; color: var(--white); }
+  .plan-card-price { font-size: 22px; font-weight: 700; color: var(--white); }
+  .plan-card-price span { font-size: 12px; font-weight: 400; color: var(--muted); }
+  .plan-card-limit { font-size: 12px; color: var(--muted); }
+  .plan-card button {
+    margin-top: auto; padding-top: 8px;
+  }
+  .upgrade-error { font-size: 12px; color: var(--red); margin-bottom: 8px; }
+
+  /* Quota-exceeded error state */
+  .quota-error-card {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; gap: 12px; padding: 32px;
+    text-align: center;
+  }
+  .quota-error-card h3 { font-size: 15px; font-weight: 600; color: var(--white); }
+  .quota-error-card p  { font-size: 13px; color: var(--muted); max-width: 320px; line-height: 1.5; }
+
   /* ── Draft / session restore banner ──────────────────────── */
   .draft-banner {
     display: flex;
@@ -1302,6 +1342,63 @@ function ApiKeyModal({ onSave }) {
   );
 }
 
+// ─── Upgrade modal ────────────────────────────────────────────────────────────
+function UpgradeModal({ onClose, onCheckout, busy, error }) {
+  return (
+    <div className="key-overlay">
+      <div className="upgrade-modal">
+        <h2>🚀 Upgrade your plan</h2>
+        <p>
+          You've hit your monthly limit. Upgrade to keep converting —
+          no interruptions, instant activation.
+        </p>
+        <div className="plan-cards">
+          <div className="plan-card">
+            <div className="plan-card-name">Starter</div>
+            <div className="plan-card-price">$9<span>/mo</span></div>
+            <div className="plan-card-limit">100 PDFs / month</div>
+            <button
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => onCheckout("starter")}
+            >
+              {busy ? "Redirecting…" : "Choose Starter →"}
+            </button>
+          </div>
+          <div className="plan-card featured">
+            <div className="plan-card-badge">Most popular</div>
+            <div className="plan-card-name">Pro</div>
+            <div className="plan-card-price">$29<span>/mo</span></div>
+            <div className="plan-card-limit">Unlimited PDFs</div>
+            <button
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => onCheckout("pro")}
+            >
+              {busy ? "Redirecting…" : "Choose Pro →"}
+            </button>
+          </div>
+        </div>
+        {error && <p className="upgrade-error">⚠ {error}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn"
+            style={{ color: "var(--muted)" }}
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+        </div>
+        <div className="privacy-note" style={{ marginTop: 14 }}>
+          Payments are processed by Stripe. You can cancel anytime from your
+          billing dashboard.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ReviewUI({
   pdfFile:       pdfFileProp  = null,
@@ -1321,6 +1418,10 @@ export default function ReviewUI({
   const [loading,       setLoading]       = useState(false);
   const [loadingMsg,    setLoadingMsg]    = useState("Parsing PDF…");
   const [apiError,      setApiError]      = useState(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [showUpgrade,   setShowUpgrade]   = useState(false);
+  const [upgradeBusy,   setUpgradeBusy]   = useState(false);
+  const [upgradeError,  setUpgradeError]  = useState(null);
   const [selectedId,    setSelectedId]    = useState(null);
   const [splitTxId,     setSplitTxId]     = useState(null);
   const [filter,        setFilter]        = useState("all");
@@ -1359,6 +1460,29 @@ export default function ReviewUI({
     const headers = { ...(opts.headers || {}), "X-API-Key": apiKey };
     return fetch(url, { ...opts, headers });
   }, [apiKey]);
+
+  // Stripe upgrade flow
+  const handleUpgrade = useCallback(async (plan) => {
+    setUpgradeBusy(true);
+    setUpgradeError(null);
+    try {
+      const res = await apiFetch("/api/auth/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan,
+          success_url: window.location.href,
+          cancel_url:  window.location.href,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Checkout failed");
+      window.location.href = data.checkout_url;
+    } catch (err) {
+      setUpgradeError(err.message);
+      setUpgradeBusy(false);
+    }
+  }, [apiFetch]);
 
   // ── Session persistence (localStorage) ────────────────────────
   const DRAFT_KEY = "pdfqbo_draft_v1";
@@ -1507,6 +1631,7 @@ export default function ReviewUI({
     setTransactions([]);
     setMeta({});
     setApiError(null);
+    setQuotaExceeded(false);
     setLoading(true);
     setLoadingMsg("Parsing PDF…");
 
@@ -1517,6 +1642,7 @@ export default function ReviewUI({
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Failed to parse PDF" }));
         if (res.status === 401) { setShowKeyModal(true); throw new Error("Invalid or missing API key."); }
+        if (res.status === 429) { setQuotaExceeded(true); throw new Error("quota"); }
         throw new Error(err.detail || "Failed to parse PDF");
       }
       const data = await res.json();
@@ -1550,6 +1676,7 @@ export default function ReviewUI({
     setTransactions([]);
     setMeta({});
     setApiError(null);
+    setQuotaExceeded(false);
     setLoading(true);
 
     const allTxns   = [];
@@ -1564,6 +1691,7 @@ export default function ReviewUI({
         const res = await apiFetch("/api/preview", { method: "POST", body: formData });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: "Failed" }));
+          if (res.status === 429) { setQuotaExceeded(true); break; }
           allWarnings.push(`${pdfs[i].name}: ${err.detail || "Failed to parse"}`);
           continue;
         }
@@ -1679,6 +1807,14 @@ export default function ReviewUI({
 
       {/* API key modal — shown on first visit or when key is missing */}
       {showKeyModal && <ApiKeyModal onSave={saveApiKey} />}
+      {showUpgrade  && (
+        <UpgradeModal
+          onClose={() => setShowUpgrade(false)}
+          onCheckout={handleUpgrade}
+          busy={upgradeBusy}
+          error={upgradeError}
+        />
+      )}
 
       {/* Draft restore banner */}
       {draftBanner && (
@@ -1720,17 +1856,29 @@ export default function ReviewUI({
             🔑 {apiKey ? `…${apiKey.slice(-6)}` : "Add key"}
           </button>
           {usage && (() => {
-            const isUnlimited = usage.limit === null;
-            const pct = isUnlimited ? 0 : usage.used / usage.limit;
+            const limit = usage.monthly_limit;
+            const used  = usage.conversions_used;
+            const rem   = usage.conversions_remaining;
+            const isUnlimited = limit === null;
+            const pct = isUnlimited ? 0 : used / limit;
             const cls = isUnlimited ? "ok" : pct >= 1 ? "full" : pct >= 0.8 ? "warn" : "ok";
             const label = isUnlimited
               ? `${usage.plan_label} · ∞`
-              : `${usage.plan_label} · ${usage.remaining}/${usage.limit}`;
-            return (
+              : `${usage.plan_label} · ${rem}/${limit}`;
+            return (<>
               <span className={`usage-pill ${cls}`} title={`${usage.used} used this period`}>
                 {label}
               </span>
-            );
+              {(cls === "full" || cls === "warn") && (
+                <button
+                  className="btn"
+                  style={{ fontSize: 11, color: "var(--amber)", borderColor: "var(--amber-dim)", padding: "3px 8px" }}
+                  onClick={() => { setUpgradeError(null); setShowUpgrade(true); }}
+                >
+                  ↑ Upgrade
+                </button>
+              )}
+            </>);
           })()}
           <button className="btn" onClick={() => fileInputRef.current?.click()}>
             ↑ Upload PDF
@@ -1934,6 +2082,24 @@ export default function ReviewUI({
                 <div style={{ width: 20, height: 20, border: "2px solid var(--border)", borderTopColor: "var(--blue)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
                 {loadingMsg}
                 <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : quotaExceeded ? (
+              <div className="quota-error-card">
+                <div style={{ fontSize: 32 }}>🚫</div>
+                <h3>Monthly limit reached</h3>
+                <p>
+                  You've used all your PDFs for this billing period.
+                  Upgrade to keep converting without interruption.
+                </p>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => { setUpgradeError(null); setShowUpgrade(true); }}
+                >
+                  ↑ Upgrade my plan
+                </button>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                  Or wait until your quota resets next period.
+                </span>
               </div>
             ) : apiError ? (
               <div style={{ padding: 28, color: "var(--red)", fontFamily: "var(--mono)", fontSize: 12 }}>
