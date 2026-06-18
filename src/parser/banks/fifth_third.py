@@ -18,6 +18,10 @@ Strategy order:
   1. pdfplumber table extraction (works when the PDF has detectable table borders)
   2. Section-aware line parsing   (consumer layout — most reliable for retail PDFs)
   3. Business-layout line parsing  (original logic kept as final fallback)
+  4. pypdf blob parsing           (fallback when pdfplumber misses pages entirely;
+                                   pdfminer/pdfplumber is known to skip pages 1-2 of
+                                   certain Fifth Third consumer PDFs while pypdf reads
+                                   all pages correctly)
 """
 from __future__ import annotations
 
@@ -57,6 +61,23 @@ _CHECK_ENTRY = re.compile(
     r"(?P<check_num>\d{3,})\s*[a-z*]?\s+"
     r"(?P<date>\d{2}/\d{2}(?:/\d{2,4})?)\s+"
     r"\$?(?P<amount>[\d,]+\.\d{2})"
+)
+
+# ── pypdf blob patterns ───────────────────────────────────────────────────────
+# In pypdf-extracted text from certain Fifth Third PDFs, transactions inside a
+# section are concatenated with no line breaks:
+#   "MM/DD amountDESCRIPTION  MM/DD amountDESCRIPTION  …"
+# (2-space gap between transactions; amount runs directly into description).
+_PYPDF_TX = re.compile(
+    r"(\d{2}/\d{2})\s+([\d,]+\.\d{2})(.+?)(?=\d{2}/\d{2}\s+[\d,]+\.\d{2}|\Z)",
+    re.DOTALL,
+)
+
+# Check entries in pypdf format: "NNNNflag?MM/DDamount" (no spaces around date/amount).
+# Checks with a gap indicator (*) and image flag (i) appear as "NNNN*iMM/DD…"
+# so we allow up to 3 flag characters instead of the usual 1.
+_PYPDF_CHECK = re.compile(
+    r"(\d{3,})\s*[a-z*]{0,3}\s*(\d{2}/\d{2})([\d,]+\.\d{2})"
 )
 
 
@@ -113,6 +134,13 @@ class FifthThirdParser(BaseParser):
         if not txns:
             txns = self._parse_business_lines(text)
 
+        # Strategy 4: pypdf fallback
+        # pdfplumber/pdfminer is known to miss pages 1-2 of certain Fifth Third
+        # consumer PDFs (the transaction pages).  pypdf reads all pages correctly
+        # but produces a concatenated blob rather than line-per-transaction text.
+        if not txns:
+            txns = self._parse_pypdf_consumer(self._pypdf_text())
+
         txns = clean(txns, warn=self.warn)
 
         if not txns:
@@ -153,9 +181,18 @@ class FifthThirdParser(BaseParser):
             account.statement_start = parse_date(period.group(1))
             account.statement_end   = parse_date(period.group(2))
 
-        # Opening / closing balance from Account Summary table
+        # Opening / closing balance from Account Summary table.
+        # pdfplumber may miss the page that contains these values (it only reads
+        # the Daily Balance Summary page on some Fifth Third PDFs), so fall back
+        # to a pypdf pass when they are not found in the pdfplumber text.
         ob = re.search(r"Beginning\s+Balance[:\s]+\$?([\d,]+\.\d{2})", text, re.I)
         cb = re.search(r"Ending\s+Balance[:\s]+\$?([\d,]+\.\d{2})", text, re.I)
+        if not ob or not cb:
+            pypdf_txt = self._pypdf_text()
+            if not ob:
+                ob = re.search(r"Beginning\s+Balance\$?([\d,]+\.\d{2})", pypdf_txt, re.I)
+            if not cb:
+                cb = re.search(r"Ending\s+Balance\$?([\d,]+\.\d{2})", pypdf_txt, re.I)
         if ob:
             account.opening_balance = parse_amount(ob.group(1))
         if cb:
@@ -437,6 +474,119 @@ class FifthThirdParser(BaseParser):
                         ))
                     except Exception as e:
                         self.warn(f"5/3 simple-parse error: {e}")
+
+        return txns
+
+    # ── Strategy 4: pypdf blob parsing ───────────────────────────────────────
+
+    def _pypdf_text(self) -> str:
+        """
+        Extract the full text of all PDF pages using pypdf.
+
+        pdfplumber/pdfminer is known to silently skip certain pages (e.g. the
+        transaction pages in some Fifth Third consumer statements).  pypdf reads
+        all pages correctly and is used as a fallback text source.
+        """
+        try:
+            import pypdf  # lazy import — keeps the dependency soft
+            reader = pypdf.PdfReader(str(self.pdf_path))
+            return "\n".join(p.extract_text() or "" for p in reader.pages)
+        except Exception as e:
+            self.warn(f"5/3 pypdf fallback failed: {e}")
+            return ""
+
+    def _parse_pypdf_consumer(self, text: str) -> list[Transaction]:
+        """
+        Parse the concatenated text blob produced by pypdf for Fifth Third
+        consumer statements.
+
+        pypdf extracts each page as a long single-line blob where transactions
+        inside a section are separated by two spaces:
+
+          Withdrawals/Debits NNN items…Date Amount Description
+          MM/DD amountDESCRIPTION  MM/DD amountDESCRIPTION  …
+          Withdrawals/Debits-continuedDate Amount Description
+          MM/DD amountDESCRIPTION  …
+          Deposits/Credits NNN items…Date Amount Description
+          MM/DD amountDESCRIPTION  …
+          Checks NNN checks totaling…Number DatePaid Amount…
+          NNNN[flag]MM/DDamount NNNN[flag]MM/DDamount …
+        """
+        if not text:
+            return []
+
+        txns: list[Transaction] = []
+        year = self._year_hint()  # pdfplumber still reads the account-summary page
+
+        # ── helpers ──────────────────────────────────────────────────────────
+
+        def _clean_blob(blob: str) -> str:
+            """Strip page-stamp/header junk so the TX regex doesn't eat it."""
+            # Remove FTCSTMT document-ID lines (e.g. "FTCSTMT002 002 20260531 …")
+            blob = re.sub(r"FTCSTMT\S+.*?(?=\n|\Z)", "", blob)
+            # Remove "Page N of N" markers
+            blob = re.sub(r"\bPage\s+\d+\s+of\s+\d+\b", "", blob)
+            # Remove "Withdrawals/Debits-continued" sub-headers
+            blob = re.sub(r"Withdrawals/Debits\s*-\s*continued", "", blob, flags=re.I)
+            # Remove "Date Amount Description" column headers
+            blob = re.sub(r"\bDate\s+Amount\s+Description\b", "", blob, flags=re.I)
+            return blob
+
+        def _txns_from_blob(blob: str, *, debit: bool) -> list[Transaction]:
+            result = []
+            for m in _PYPDF_TX.finditer(blob):
+                tx_date = parse_date(m.group(1), year_hint=year)
+                amount  = parse_amount(m.group(2))
+                desc    = m.group(3).strip()
+                if tx_date and amount is not None and desc:
+                    try:
+                        result.append(Transaction(
+                            date=tx_date,
+                            description=desc,
+                            amount=-abs(amount) if debit else abs(amount),
+                        ))
+                    except Exception as e:
+                        self.warn(f"5/3 pypdf tx error: {e}")
+            return result
+
+        # ── locate section boundaries ─────────────────────────────────────────
+        chk_m = re.search(r"Checks\s+\d+\s+checks",  text, re.I)
+        wd_m  = re.search(r"Withdrawals/Debits\b",    text, re.I)
+        dep_m = re.search(r"Deposits/Credits",         text, re.I)
+        end_m = re.search(r"Daily\s*Balance",          text, re.I)
+
+        eof     = len(text)
+        end_pos = end_m.start() if end_m else eof
+        dep_pos = dep_m.start() if dep_m else end_pos
+        wd_pos  = wd_m.start()  if wd_m  else dep_pos
+        chk_pos = chk_m.start() if chk_m else wd_pos
+
+        # ── checks ────────────────────────────────────────────────────────────
+        if chk_m:
+            chk_end  = wd_pos if wd_m else dep_pos
+            chk_blob = text[chk_pos:chk_end]
+            for m in _PYPDF_CHECK.finditer(chk_blob):
+                tx_date = parse_date(m.group(2), year_hint=year)
+                amount  = parse_amount(m.group(3))
+                if tx_date and amount is not None:
+                    try:
+                        txns.append(Transaction(
+                            date=tx_date,
+                            description=f"Check #{m.group(1).lstrip('0') or '0'}",
+                            amount=-abs(amount),
+                        ))
+                    except Exception as e:
+                        self.warn(f"5/3 pypdf check error: {e}")
+
+        # ── withdrawals / debits (includes "…-continued" page-2 section) ─────
+        if wd_m:
+            wd_blob = _clean_blob(text[wd_pos:dep_pos])
+            txns.extend(_txns_from_blob(wd_blob, debit=True))
+
+        # ── deposits / credits ────────────────────────────────────────────────
+        if dep_m:
+            dep_blob = _clean_blob(text[dep_pos:end_pos])
+            txns.extend(_txns_from_blob(dep_blob, debit=False))
 
         return txns
 
