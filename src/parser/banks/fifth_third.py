@@ -40,11 +40,6 @@ _5TH3RD_MARKERS = [
     "877-534-2264",             # Fifth Third business support
 ]
 
-# ── Section header patterns ───────────────────────────────────────────────────
-_SECTION_WD  = re.compile(r"withdrawals?\s*/\s*debits?",  re.I)
-_SECTION_DC  = re.compile(r"deposits?\s*/\s*credits?",    re.I)
-_SECTION_CHK = re.compile(r"^checks?(?:\s+paid)?\s*$",   re.I)
-
 # ── Transaction line: MM/DD  amount  description  (consumer layout) ───────────
 # Matches lines where the second token is a dollar amount (no leading sign).
 _TX_WD = re.compile(
@@ -53,12 +48,28 @@ _TX_WD = re.compile(
     r"(?P<desc>.+)$"
 )
 
-# ── Check line: check_no  MM/DD  amount  (Checks section) ────────────────────
-_TX_CHECK = re.compile(
-    r"^(?P<check_num>\d{3,})\s+"           # check number (3+ digits)
+# ── Check entry: check_no [type_flag]  MM/DD  amount
+# Fifth Third puts an optional single-letter type flag after the check number
+# (i = electronic image, e = electronic, s = substitute).
+# Multiple checks can appear per line in a 3-up column layout, so we use
+# findall instead of match.
+_CHECK_ENTRY = re.compile(
+    r"(?P<check_num>\d{3,})\s*[a-z*]?\s+"
     r"(?P<date>\d{2}/\d{2}(?:/\d{2,4})?)\s+"
-    r"\$?(?P<amount>[\d,]+\.\d{2})$"
+    r"\$?(?P<amount>[\d,]+\.\d{2})"
 )
+
+
+def _compact(s: str) -> str:
+    """
+    Remove ALL whitespace and lowercase — used for section-header detection.
+
+    Fifth Third's PDF font inserts spaces between individual characters in
+    section headers, so "Withdrawals / Debits" may arrive from pdfplumber as
+    "W it h d r a w a ls / D e b it s".  Stripping every space before
+    comparing lets a single check work for both normal and spaced renderings.
+    """
+    return re.sub(r"\s+", "", s).lower()
 
 # ── Business layout: MM/DD  description  [debit]  [credit]  balance ──────────
 _TX_LINE_FULL = re.compile(
@@ -246,15 +257,20 @@ class FifthThirdParser(BaseParser):
         Parse retail statements that use named sections:
           "Withdrawals / Debits"   —  MM/DD   amount   description
           "Deposits / Credits"     —  MM/DD   amount   description
-          "Checks"                 —  check_no   MM/DD   amount
+          "Checks"                 —  check_no [flag]  MM/DD  amount  (multiple per row)
 
-        The "Account Summary" table at the top uses "Beginning Balance" /
-        "Ending Balance" labels, so we must NOT break on those lines.
-        Only break on the "Daily Balance Summary" (or "Daily Balance Detail")
-        section, which contains no per-transaction data.
+        Fifth Third's PDF font inserts spaces between individual characters in
+        section headers, so we use _compact() (strip all whitespace + lowercase)
+        for header matching rather than regex on the raw line.
+
+        The "Account Summary" at the top lists "Beginning/Ending Balance" but
+        these are NOT transaction sections — we stay in NONE until we see a
+        recognised section header.  The only stop condition is "Daily Balance
+        Summary" (end of statement), which is also detected via compact match.
         """
-        # Quick exit: if neither section header is present, skip this strategy
-        if not (_SECTION_WD.search(text) or _SECTION_DC.search(text)):
+        # Quick exit: compact-check avoids processing PDFs that have no consumer sections
+        compact_full = _compact(text)
+        if "withdrawals" not in compact_full and "deposits" not in compact_full:
             return []
 
         year = self._year_hint()
@@ -268,37 +284,40 @@ class FifthThirdParser(BaseParser):
             if not stripped:
                 continue
 
-            # ── Section transitions ──
-            if _SECTION_WD.search(stripped):
-                section = WITHDRAWALS
-                continue
-            if _SECTION_DC.search(stripped):
-                section = DEPOSITS
-                continue
-            if _SECTION_CHK.match(stripped):
-                section = CHECKS
-                continue
+            # ── Section header detection (compact match handles spaced fonts) ──
+            # Only check short lines that don't start with a date — avoids
+            # accidentally matching section keywords inside long descriptions.
+            if not re.match(r"\d{2}/\d{2}", stripped) and len(stripped) < 100:
+                c = _compact(stripped)
 
-            # Daily Balance Summary marks end of transaction data
-            if re.search(r"daily\s+balance\s+(summary|detail)", stripped, re.I):
-                section = NONE
-                continue
+                if "withdrawals" in c and "debit" in c:
+                    section = WITHDRAWALS
+                    continue
+                if "deposit" in c and "credit" in c:
+                    section = DEPOSITS
+                    continue
+                if c in ("checks", "checkspaid"):
+                    section = CHECKS
+                    continue
+                # Daily Balance Summary = end of transaction data
+                if "dailybalance" in c:
+                    section = NONE
+                    continue
 
             if section == NONE:
                 continue
 
-            # ── Skip non-data lines ──
-            # Column headers
+            # ── Skip column-header and total lines ──
             if re.match(r"^(date|number|description|amount|total|balance)\b", stripped, re.I):
                 continue
-            # Section totals: "Total Withdrawals / Debits  $4,246.41"
-            if re.search(r"\btotal\b", stripped, re.I) and re.search(r"\$?[\d,]+\.\d{2}", stripped):
+            c_stripped = _compact(stripped)
+            if "total" in c_stripped and re.search(r"\d+\.\d{2}", stripped):
                 continue
-            # "(31 items)" type lines
-            if re.match(r"^\(\d+\s+items?\)", stripped, re.I):
+            # "(31 items totaling $4,246.41)" type lines
+            if re.match(r"^\d+\s+items?\s+totaling", stripped, re.I):
                 continue
 
-            # ── Parse transaction lines ──
+            # ── Parse transaction / check lines ──
             if section in (WITHDRAWALS, DEPOSITS):
                 m = _TX_WD.match(stripped)
                 if m:
@@ -308,7 +327,6 @@ class FifthThirdParser(BaseParser):
                     amount = parse_amount(m.group("amount"))
                     if amount is None:
                         continue
-                    # Withdrawals/Debits → negative; Deposits/Credits → positive
                     amount = -abs(amount) if section == WITHDRAWALS else abs(amount)
                     try:
                         txns.append(Transaction(
@@ -320,8 +338,9 @@ class FifthThirdParser(BaseParser):
                         self.warn(f"5/3 consumer parse error: {e}")
 
             elif section == CHECKS:
-                m = _TX_CHECK.match(stripped)
-                if m:
+                # Multiple checks can appear on one row (3-up column layout).
+                # _CHECK_ENTRY uses findall to extract every check on the line.
+                for m in _CHECK_ENTRY.finditer(stripped):
                     tx_date = parse_date(m.group("date"), year_hint=year)
                     if not tx_date:
                         continue
@@ -332,7 +351,7 @@ class FifthThirdParser(BaseParser):
                         txns.append(Transaction(
                             date=tx_date,
                             description=f"Check #{m.group('check_num')}",
-                            amount=-abs(amount),    # checks are debits
+                            amount=-abs(amount),
                         ))
                     except Exception as e:
                         self.warn(f"5/3 check parse error: {e}")
