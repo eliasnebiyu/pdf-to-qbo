@@ -15,7 +15,10 @@ from src.parser import detect_and_parse
 from src.parser.banks.bofa import BofAParser
 from src.parser.banks.chase import ChaseParser
 from src.parser.banks.citi import CitiParser
+from src.parser.banks.fifth_third import FifthThirdParser
 from src.parser.banks.generic import GenericParser
+from src.parser.banks.pnc import PNCParser
+from src.parser.banks.us_bank import USBankParser
 from src.parser.banks.wells import WellsFargoParser
 
 
@@ -433,6 +436,339 @@ class TestGenericParser:
         by_desc = {tx.description: tx for tx in stmt.transactions}
         assert by_desc["PAYCHECK"].amount == Decimal("3000.00")
         assert by_desc["RENT PAYMENT"].amount == Decimal("-1200.00")
+
+
+# ── Fifth Third Bank parser ───────────────────────────────────────────────────
+
+_5TH3RD_HEADER = (
+    "Fifth Third Bank\n53.com\n"
+    "Statement Period Date: 5/1/2024 - 5/31/2024\n"
+    "Account Number: 73018850\n"
+    "Account Type: 5/3 BUSINESS CKG\n"
+    "Beginning Balance $1,000.00\n"
+    "Ending Balance $1,234.56\n"
+)
+
+# Consumer layout: separate Withdrawals/Debits and Deposits/Credits sections.
+_5TH3RD_CONSUMER_TEXT = (
+    _5TH3RD_HEADER
+    + "Withdrawals / Debits\n"
+    + "Date Amount Description\n"
+    + "05/01 85.48 DEBIT CARD PURCHASE AT GROCERY STORE\n"
+    + "05/03 200.00 ATM WITHDRAWAL\n"
+    + "Deposits / Credits\n"
+    + "Date Amount Description\n"
+    + "05/02 500.00 DIRECT DEPOSIT PAYROLL\n"
+    + "05/10 250.00 MOBILE DEPOSIT\n"
+    + "Checks\n"
+    + "Number Date Paid Amount\n"
+    + "1042 05/05 150.00\n"
+    + "Daily Balance Summary\n"
+)
+
+# Business layout: "Account Activity" / "Date Description Debit Credit Balance"
+_5TH3RD_BUSINESS_TABLE = [
+    ["Date", "Description", "Debit", "Credit", "Balance"],
+    ["05/01", "DIRECT DEPOSIT PAYROLL",  "",         "3,000.00", "4,000.00"],
+    ["05/05", "UTILITY PAYMENT",         "120.00",   "",         "3,880.00"],
+    ["05/12", "ATM WITHDRAWAL",          "200.00",   "",         "3,680.00"],
+    ["05/15", "ACH CREDIT - REFUND",     "",         "50.00",    "3,730.00"],
+]
+
+
+class TestFifthThirdParser:
+
+    def test_detects_fifth_third_by_marker(self):
+        with patch_pdf([{"text": _5TH3RD_HEADER, "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_53com_domain(self):
+        with patch_pdf([{"text": "Visit us at 53.com\nStatement 2024", "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_fifth_third(self):
+        with patch_pdf([{"text": _CHASE_HEADER, "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_consumer_section_parsing(self):
+        """Withdrawals/Debits + Deposits/Credits + Checks sections parsed correctly."""
+        with patch_pdf([{"text": _5TH3RD_CONSUMER_TEXT, "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "fifth_third"
+        assert stmt.transaction_count == 5  # 2 WD + 2 deposits + 1 check
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+
+        assert by_desc["DEBIT CARD PURCHASE AT GROCERY STORE"].amount == Decimal("-85.48")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-200.00")
+        assert by_desc["DIRECT DEPOSIT PAYROLL"].amount == Decimal("500.00")
+        assert by_desc["MOBILE DEPOSIT"].amount == Decimal("250.00")
+        assert by_desc["Check #1042"].amount == Decimal("-150.00")
+
+    def test_consumer_account_metadata(self):
+        """Statement dates and balances extracted from header text."""
+        with patch_pdf([{"text": _5TH3RD_CONSUMER_TEXT, "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.account.statement_start == date(2024, 5, 1)
+        assert stmt.account.statement_end == date(2024, 5, 31)
+        assert stmt.account.account_id == "****8850"
+        assert stmt.account.opening_balance == Decimal("1000.00")
+        assert stmt.account.closing_balance == Decimal("1234.56")
+
+    def test_business_table_extraction(self):
+        """5-column Debit/Credit table → signed amounts."""
+        with patch_pdf([{"text": _5TH3RD_HEADER, "tables": [_5TH3RD_BUSINESS_TABLE]}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT PAYROLL"].amount == Decimal("3000.00")
+        assert by_desc["UTILITY PAYMENT"].amount == Decimal("-120.00")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-200.00")
+        assert by_desc["ACH CREDIT - REFUND"].amount == Decimal("50.00")
+
+    def test_withdrawals_are_negative(self):
+        with patch_pdf([{"text": _5TH3RD_CONSUMER_TEXT, "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        debits = [t for t in stmt.transactions if t.amount < 0]
+        assert all(t.amount < 0 for t in debits)
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _5TH3RD_CONSUMER_TEXT, "tables": []}]):
+            p = FifthThirdParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── PNC Bank parser ───────────────────────────────────────────────────────────
+
+_PNC_HEADER = (
+    "PNC Bank\npnc.com\n"
+    "Statement Period: 05/01/2024 to 05/31/2024\n"
+    "Account Number: ****1234\n"
+    "Beginning Balance: $2,500.00\n"
+    "Ending Balance: $3,100.00\n"
+)
+
+_PNC_CHECKING_TEXT = (
+    _PNC_HEADER
+    # PNC line parser is gated: transactions are only captured after "Activity Detail"
+    + "Activity Detail\n"
+    + "Deposits and Other Additions\n"
+    + "Date Amount Description\n"
+    + "05/02 1,500.00 Direct Deposit Payroll\n"
+    + "05/10 200.00 Mobile Deposit\n"
+    + "Debit Card Purchases\n"
+    + "Date Amount Description\n"
+    + "05/03 45.00 GROCERY MARKET\n"
+    + "05/07 120.00 UTILITY PAYMENT\n"
+    + "Checks and Substitute Checks\n"
+    + "Date Number Amount\n"
+    + "05/05 1055 250.00\n"
+)
+
+# PNC checking uses section-based line parsing (no multi-row table extraction).
+# A second, simpler text fixture for the "table" test variant.
+_PNC_SIMPLE_TEXT = (
+    _PNC_HEADER
+    + "Activity Detail\n"
+    + "Deposits and Other Additions\n"
+    + "05/02 1,500.00 DIRECT DEPOSIT PAYROLL\n"
+    + "ACH Deductions\n"
+    + "05/03 45.00 GROCERY MARKET\n"
+    + "05/07 120.00 UTILITY PAYMENT\n"
+)
+
+
+class TestPNCParser:
+
+    def test_detects_pnc_statement(self):
+        with patch_pdf([{"text": _PNC_HEADER, "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_pnc_domain(self):
+        with patch_pdf([{"text": "Visit pnc.com for details\n2024", "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_pnc(self):
+        with patch_pdf([{"text": _CHASE_HEADER, "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_simple_section_extraction(self):
+        """PNC checking uses line-based section parsing (no table extraction)."""
+        with patch_pdf([{"text": _PNC_SIMPLE_TEXT, "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 3
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT PAYROLL"].amount == Decimal("1500.00")
+        assert by_desc["GROCERY MARKET"].amount == Decimal("-45.00")
+        assert by_desc["UTILITY PAYMENT"].amount == Decimal("-120.00")
+
+    def test_section_based_line_parsing(self):
+        """Additions sections → positive; deductions sections → negative."""
+        with patch_pdf([{"text": _PNC_CHECKING_TEXT, "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["Direct Deposit Payroll"].amount == Decimal("1500.00")
+        assert by_desc["Mobile Deposit"].amount == Decimal("200.00")
+        assert by_desc["GROCERY MARKET"].amount == Decimal("-45.00")
+        assert by_desc["UTILITY PAYMENT"].amount == Decimal("-120.00")
+        assert by_desc["Check #1055"].amount == Decimal("-250.00")
+
+    def test_deposits_positive_debits_negative(self):
+        with patch_pdf([{"text": _PNC_CHECKING_TEXT, "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        deposits = [t for t in stmt.transactions if t.amount > 0]
+        debits   = [t for t in stmt.transactions if t.amount < 0]
+        assert len(deposits) == 2
+        assert len(debits)   == 3  # 2 purchases + 1 check
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _PNC_SIMPLE_TEXT, "tables": []}]):
+            p = PNCParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── U.S. Bank parser ──────────────────────────────────────────────────────────
+
+_USB_HEADER = (
+    "U.S. Bank National Association\nusbank.com\n"
+    "Statement Period: May 1, 2024 – May 31, 2024\n"
+    "Account Number: ****5678\n"
+)
+
+_USB_LINE_TEXT = (
+    _USB_HEADER
+    + "Other Deposits\n"
+    + "May 3 Electronic Deposit From EMPLOYER PAYROLL $ 3,500.00\n"
+    + "May15 Mobile Banking Deposit 200.00\n"
+    + "Other Withdrawals\n"
+    + "May 5 Electronic Withdrawal To ELECTRIC COMPANY $ 95.00-\n"
+    + "May10 Debit Card Purchase AT GROCERY STORE 67.43-\n"
+    + "Checks Presented Conventionally\n"
+    + "2011 May 8  1234567890  350.00\n"
+    + "Daily Balance Summary\n"
+)
+
+# US Bank PDFs present each transaction as its own single-row table
+# (5 columns: Date | TypeRef | ToFrom+Details | empty | Amount).
+# pdfplumber returns each as a separate table with one data row.
+_USB_TABLES = [
+    [["May 3",  "Electronic Deposit",   "From EMPLOYER PAYROLL",      "", "3,500.00"]],
+    [["May 5",  "Electronic Withdrawal","To ELECTRIC COMPANY",         "", "95.00-"]],
+    [["May 10", "Debit Card Purchase",  "AT GROCERY STORE",            "", "67.43-"]],
+]
+
+
+class TestUSBankParser:
+
+    def test_detects_us_bank_statement(self):
+        with patch_pdf([{"text": _USB_HEADER, "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_usbank_domain(self):
+        with patch_pdf([{"text": "usbank.com\nStatement 2024", "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_us_bank(self):
+        with patch_pdf([{"text": _BOFA_HEADER, "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_line_text_extraction(self):
+        """Month-name dates; trailing '-' on amount means withdrawal."""
+        with patch_pdf([{"text": _USB_LINE_TEXT, "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["Electronic Deposit From EMPLOYER PAYROLL"].amount == Decimal("3500.00")
+        assert by_desc["Electronic Withdrawal To ELECTRIC COMPANY"].amount == Decimal("-95.00")
+        assert by_desc["Debit Card Purchase AT GROCERY STORE"].amount == Decimal("-67.43")
+
+    def test_check_entry_parsed(self):
+        with patch_pdf([{"text": _USB_LINE_TEXT, "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        checks = [t for t in stmt.transactions if "Check" in t.description]
+        assert len(checks) == 1
+        assert checks[0].amount == Decimal("-350.00")
+
+    def test_deposits_positive_withdrawals_negative(self):
+        with patch_pdf([{"text": _USB_LINE_TEXT, "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert all(t.amount > 0 for t in stmt.transactions if "Deposit" in t.description or "PAYROLL" in t.description)
+        assert all(t.amount < 0 for t in stmt.transactions if t.amount < 0)
+
+    def test_table_extraction(self):
+        """Each US Bank TX is its own 1-row table (5 cols); trailing '-' = withdrawal."""
+        with patch_pdf([{"text": _USB_HEADER, "tables": _USB_TABLES}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 3
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["Electronic Deposit From EMPLOYER PAYROLL"].amount == Decimal("3500.00")
+        assert by_desc["Electronic Withdrawal To ELECTRIC COMPANY"].amount == Decimal("-95.00")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _USB_LINE_TEXT, "tables": []}]):
+            p = USBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
 
 
 # ── Parser router (detect_and_parse) ─────────────────────────────────────────

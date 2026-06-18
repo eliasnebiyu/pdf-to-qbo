@@ -1,0 +1,13 @@
+# Nixpacks build config for Railway deployment.
+#
+# Phase order: setup → install → build → start
+# "build" runs after Python deps are installed and before the server starts.
+# It compiles the React frontend so FastAPI can serve it from frontend/dist/.
+
+[phases.build]
+cmds = [
+  "cd frontend && npm install && npm run build"
+]
+
+[start]
+cmd = "uvicorn api:app --host 0.0.0.0 --port $PORT"

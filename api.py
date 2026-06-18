@@ -55,7 +55,8 @@ from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -761,3 +762,24 @@ async def export_transactions(
             "X-Transaction-Count": str(len(txns)),
         },
     )
+
+
+# ── Frontend SPA (must come last — catch-all overwrites nothing registered above) ──
+
+_DIST = Path(__file__).parent / "frontend" / "dist"
+
+if _DIST.exists():
+    # Vite outputs all JS/CSS chunks under dist/assets/
+    _assets_dir = _DIST / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="vite-assets")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def _favicon() -> Response:
+        ico = _DIST / "favicon.ico"
+        return FileResponse(ico) if ico.exists() else Response(status_code=204)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _serve_spa(full_path: str = "") -> FileResponse:
+        """Catch-all: return index.html so React Router handles client-side paths."""
+        return FileResponse(_DIST / "index.html")
