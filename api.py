@@ -71,6 +71,7 @@ from src.auth import (
     validate_and_check_quota,
     verify_key_only,
 )
+from src.utils.email import send_api_key_email, send_parsing_error_report
 from src.billing import create_checkout_session, handle_webhook
 from src.exporter import to_csv, to_ofx
 from src.models import BankAccount, ParsedStatement, Transaction, TransactionType
@@ -209,6 +210,11 @@ def register(request: Request, body: RegisterRequest):
 
     key  = create_api_key(email, plan="free")
     plan = PLANS["free"]
+
+    # Fire-and-forget: email the key to the registrant's inbox.
+    # Gracefully skipped when RESEND_API_KEY is not configured.
+    send_api_key_email(email, key, plan="free")
+
     return {
         "api_key":        key,
         "email":          email,
@@ -216,8 +222,41 @@ def register(request: Request, body: RegisterRequest):
         "monthly_limit":  plan["monthly_limit"],
         "message": (
             "Save this key — it will not be shown again. "
+            "A copy has been sent to your email. "
             "Include it as the X-API-Key header on every request."
         ),
+    }
+
+
+# ── Report a parsing error (public, rate-limited) ─────────────────────────────
+
+class ErrorReportRequest(BaseModel):
+    email:       str
+    bank:        str = ""
+    description: str
+    api_key:     str = ""
+
+
+@app.post("/report-error", status_code=200)
+@limiter.limit("10/hour")
+def report_error(request: Request, body: ErrorReportRequest):
+    """
+    Accept a user-submitted parsing error report and forward it to support.
+    No authentication required — we want to hear from free-tier users too.
+    """
+    if len(body.description.strip()) < 10:
+        raise HTTPException(status_code=422, detail="Please describe the issue (10+ characters).")
+
+    sent = send_parsing_error_report(
+        user_email=body.email.strip(),
+        bank=body.bank.strip(),
+        description=body.description.strip(),
+        api_key=body.api_key,
+    )
+    return {
+        "received": True,
+        "emailed":  sent,
+        "message":  "Thanks — we'll investigate and improve the parser.",
     }
 
 

@@ -857,6 +857,133 @@ const css = `
   .qbo-val  { color: var(--green); }
   .qbo-val-neg { color: var(--red); }
   .qbo-val-neutral { color: var(--white-2); }
+
+  /* ── Mobile tab switcher (hidden on desktop) ─────────────────── */
+  .pane-tabs {
+    display: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--ink-2);
+    flex-shrink: 0;
+  }
+  .pane-tab {
+    flex: 1;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 0;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .15s;
+  }
+  .pane-tab.active { color: var(--white); border-bottom-color: var(--blue); }
+
+  /* ── Tablet: ≤ 1024px ────────────────────────────────────────── */
+  @media (max-width: 1024px) {
+    /* Shrink topbar buttons */
+    .btn { font-size: 12px; padding: 5px 10px; }
+    .topbar-file { max-width: 160px; }
+
+    /* Status bar: make it horizontally scrollable */
+    .status-bar {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+    }
+    .stat-cell { min-width: 110px; padding: 8px 14px; }
+
+    /* Table font a little tighter */
+    td { font-size: 11px; padding: 6px 10px; }
+    thead th { padding: 7px 10px; }
+
+    /* Add-row grid adapts */
+    .add-row {
+      grid-template-columns: 90px 1fr 100px 80px 60px auto;
+    }
+  }
+
+  /* ── iPad portrait / large phone: ≤ 768px ───────────────────── */
+  @media (max-width: 768px) {
+    /* Show tab switcher, collapse side-by-side into single panel */
+    .pane-tabs { display: flex; }
+
+    .main-layout {
+      grid-template-columns: 1fr;
+      position: relative;
+    }
+
+    /* PDF pane hidden unless active */
+    .pdf-pane {
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .pdf-pane.pane-hidden,
+    .table-pane.pane-hidden { display: none; }
+
+    /* Topbar: hide file badge on small screens, tighten gaps */
+    .topbar { padding: 0 12px; gap: 8px; }
+    .topbar-file { display: none; }
+    .topbar-actions { gap: 6px; }
+
+    /* Status bar: 2 cells wide, wrap instead of scroll */
+    .status-bar { flex-wrap: wrap; }
+    .stat-cell {
+      min-width: calc(50% - 1px);
+      border-right: 1px solid var(--border);
+      box-sizing: border-box;
+    }
+    .stat-cell:nth-child(even) { border-right: none; }
+    .stat-cell:last-child { border-right: none; margin-left: 0; width: 100%; }
+
+    /* Modals fill more of viewport */
+    .modal, .key-modal, .upgrade-modal {
+      min-width: unset;
+      width: calc(100vw - 32px);
+      padding: 20px;
+    }
+    .format-grid { grid-template-columns: 1fr 1fr; }
+    .plan-cards  { flex-direction: column; }
+
+    /* Footer: stack vertically */
+    .footer { flex-direction: column; align-items: stretch; gap: 8px; }
+    .footer > div { justify-content: center; }
+
+    /* QBO preview shorter on small screen */
+    .qbo-preview { height: 140px; }
+
+    /* Add-row: stack into two rows */
+    .add-row {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  /* ── Phone: ≤ 480px ──────────────────────────────────────────── */
+  @media (max-width: 480px) {
+    /* Topbar: keep only essential controls */
+    .topbar { height: 48px; padding: 0 10px; gap: 6px; }
+    .topbar-brand { font-size: 12px; }
+    .btn { font-size: 11px; padding: 4px 8px; }
+
+    /* Status bar: full-width single cells */
+    .stat-cell {
+      min-width: 100%;
+      border-right: none;
+    }
+
+    /* Table: remove balance column via hiding (use CSS not DOM) */
+    .col-balance { display: none; }
+
+    /* Smaller table text */
+    td { font-size: 10px; padding: 5px 8px; }
+    thead th { padding: 6px 8px; font-size: 9px; }
+
+    /* Add-row: single column */
+    .add-row { grid-template-columns: 1fr; }
+
+    /* Footer summary: wrap items */
+    .footer-summary { flex-wrap: wrap; gap: 8px; }
+  }
 `;
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
@@ -1440,6 +1567,36 @@ export default function ReviewUI({
   const [showKeyModal, setShowKeyModal] = useState(!getStoredKey());
   const [usage,        setUsage]        = useState(null); // { plan, plan_label, used, remaining, limit }
 
+  // ── Report parsing error ────────────────────────────────────────
+  const [showReport,      setShowReport]      = useState(false);
+  const [reportDesc,      setReportDesc]      = useState("");
+  const [reportEmail,     setReportEmail]     = useState("");
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [reportBusy,      setReportBusy]      = useState(false);
+
+  // Mobile pane tab: "pdf" | "table"
+  const [activePane, setActivePane] = useState("table");
+
+  const submitReport = async () => {
+    if (reportDesc.trim().length < 10) return;
+    setReportBusy(true);
+    try {
+      await fetch("/api/report-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email:       reportEmail || "anonymous",
+          bank:        pdfName || "",
+          description: reportDesc,
+          api_key:     apiKey || "",
+        }),
+      });
+      setReportSubmitted(true);
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   const saveApiKey = (k) => {
     saveStoredKey(k);
     setApiKey(k.trim());
@@ -1634,6 +1791,7 @@ export default function ReviewUI({
     setQuotaExceeded(false);
     setLoading(true);
     setLoadingMsg("Parsing PDF…");
+    setActivePane("pdf"); // show PDF while loading on mobile
 
     try {
       const formData = new FormData();
@@ -1648,6 +1806,7 @@ export default function ReviewUI({
       const data = await res.json();
       setMeta(data);
       setTransactions(data.transactions.map(tx => normaliseTx(tx, file.name)));
+      setActivePane("table"); // switch to table pane on mobile after parse
       // Refresh quota display after a successful parse
       if (apiKey) {
         fetch("/api/auth/usage", { headers: { "X-API-Key": apiKey } })
@@ -1723,6 +1882,7 @@ export default function ReviewUI({
 
     setMeta({ ...primaryMeta, warnings: allWarnings });
     setTransactions(merged);
+    setActivePane("table"); // switch to table pane on mobile after multi-file parse
     setLoading(false);
   }, [handleSingleFile]);
 
@@ -1816,6 +1976,73 @@ export default function ReviewUI({
         />
       )}
 
+      {/* ── Report parsing error modal ── */}
+      {showReport && (
+        <div style={{
+          position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,
+          display:"flex",alignItems:"center",justifyContent:"center",padding:20,
+        }} onClick={e => e.target === e.currentTarget && setShowReport(false)}>
+          <div style={{
+            background:"var(--ink-2)",border:"1px solid var(--border)",
+            borderRadius:14,padding:28,width:"100%",maxWidth:460,
+            display:"flex",flexDirection:"column",gap:16,
+          }}>
+            {reportSubmitted ? (
+              <>
+                <p style={{color:"var(--green)",fontWeight:700,margin:0,fontSize:17}}>✓ Report received</p>
+                <p style={{color:"var(--muted)",margin:0,fontSize:14}}>
+                  Thanks — we'll investigate and improve the parser. If you left your email we'll follow up.
+                </p>
+                <button className="btn btn-primary" onClick={() => setShowReport(false)}>Close</button>
+              </>
+            ) : (
+              <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <h3 style={{margin:0,color:"var(--white)",fontSize:16,fontWeight:700}}>🐛 Report a parsing issue</h3>
+                  <button onClick={() => setShowReport(false)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:18}}>×</button>
+                </div>
+                <p style={{color:"var(--muted)",margin:0,fontSize:13}}>
+                  Something look wrong? Tell us what happened and we'll fix the parser.
+                </p>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <input
+                    type="email"
+                    placeholder="Your email (optional, for follow-up)"
+                    value={reportEmail}
+                    onChange={e => setReportEmail(e.target.value)}
+                    style={{
+                      background:"var(--ink-3)",border:"1px solid var(--border)",
+                      borderRadius:7,padding:"9px 12px",color:"var(--white)",
+                      fontSize:13,outline:"none",fontFamily:"var(--sans)",
+                    }}
+                  />
+                  <textarea
+                    placeholder="What's wrong? e.g. 'Wrong amounts on deposits', 'Missing 3 transactions', 'Dates are off by 1 day'…"
+                    value={reportDesc}
+                    onChange={e => setReportDesc(e.target.value)}
+                    rows={4}
+                    style={{
+                      background:"var(--ink-3)",border:"1px solid var(--border)",
+                      borderRadius:7,padding:"9px 12px",color:"var(--white)",
+                      fontSize:13,outline:"none",resize:"vertical",
+                      fontFamily:"var(--sans)",lineHeight:1.6,
+                    }}
+                  />
+                </div>
+                <button
+                  className="btn btn-primary"
+                  disabled={reportBusy || reportDesc.trim().length < 10}
+                  onClick={submitReport}
+                  style={{alignSelf:"flex-end"}}
+                >
+                  {reportBusy ? "Sending…" : "Send report"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Draft restore banner */}
       {draftBanner && (
         <div className="draft-banner">
@@ -1880,6 +2107,16 @@ export default function ReviewUI({
               )}
             </>);
           })()}
+          {transactions.length > 0 && (
+            <button
+              className="btn"
+              title="Report a parsing error"
+              onClick={() => { setReportSubmitted(false); setReportDesc(""); setShowReport(true); }}
+              style={{ color: "var(--muted)", fontSize: 12 }}
+            >
+              🐛 Report
+            </button>
+          )}
           <button className="btn" onClick={() => fileInputRef.current?.click()}>
             ↑ Upload PDF
           </button>
@@ -1990,11 +2227,27 @@ export default function ReviewUI({
         </div>
       )}
 
+      {/* Mobile pane switcher — only visible on ≤ 768px via CSS */}
+      <div className="pane-tabs">
+        <button
+          className={`pane-tab ${activePane === "pdf" ? "active" : ""}`}
+          onClick={() => setActivePane("pdf")}
+        >
+          📄 PDF
+        </button>
+        <button
+          className={`pane-tab ${activePane === "table" ? "active" : ""}`}
+          onClick={() => setActivePane("table")}
+        >
+          📊 Transactions
+        </button>
+      </div>
+
       {/* Main split layout */}
       <div className="main-layout">
 
         {/* ── LEFT: PDF viewer ─────────────────────────────────── */}
-        <div className="pdf-pane">
+        <div className={`pdf-pane${activePane !== "pdf" ? " pane-hidden" : ""}`}>
           <div className="pane-header">
             <span className="pane-label">
               {isMultiFile ? "First PDF (preview)" : "Original PDF"}
@@ -2053,7 +2306,7 @@ export default function ReviewUI({
         </div>
 
         {/* ── RIGHT: Transaction table ──────────────────────────── */}
-        <div className="table-pane">
+        <div className={`table-pane${activePane !== "table" ? " pane-hidden" : ""}`}>
           <div className="pane-header">
             <span className="pane-label">Parsed Transactions</span>
             <button className="btn btn-icon" title="Add row" onClick={() => setShowAddRow(s => !s)} style={{ fontSize: 16 }}>＋</button>
@@ -2122,7 +2375,7 @@ export default function ReviewUI({
                     <th onClick={() => sort("category")} style={{ width: 120 }}>Category{sortIcon("category")}</th>
                     <th style={{ width: 64 }}>Type</th>
                     <th className="r" style={{ width: 96 }} onClick={() => sort("amount")}>Amount{sortIcon("amount")}</th>
-                    <th className="r" style={{ width: 88 }}>Balance</th>
+                    <th className="r col-balance" style={{ width: 88 }}>Balance</th>
                     <th style={{ width: 72 }} />
                   </tr>
                 </thead>
@@ -2201,7 +2454,7 @@ export default function ReviewUI({
                         </td>
 
                         {/* balance */}
-                        <td style={{ textAlign: "right" }} onClick={e => e.stopPropagation()}>
+                        <td className="col-balance" style={{ textAlign: "right" }} onClick={e => e.stopPropagation()}>
                           <input className="editable amount-input" style={{ color: "var(--subtle)" }}
                             value={tx.balance || ""}
                             onChange={e => updateTx(tx.id, "balance", e.target.value)}
