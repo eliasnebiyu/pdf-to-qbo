@@ -23,7 +23,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option("1.0.0", prog_name="pdf-to-qbo")
+@click.version_option("1.0.0", prog_name="parsify")
 def cli():
     """Convert bank statement PDFs to QuickBooks-compatible OFX/QFX/CSV files."""
     pass
@@ -56,7 +56,7 @@ def convert(pdf_file: Path, format: str, output: Optional[Path], verbose: bool):
 
     PDF_FILE: path to the bank statement PDF
     """
-    console.print(f"\n[bold]pdf-to-qbo[/bold] — converting [cyan]{pdf_file.name}[/cyan]")
+    console.print(f"\n[bold]parsify[/bold] — converting [cyan]{pdf_file.name}[/cyan]")
     console.print("─" * 50)
 
     # Parse

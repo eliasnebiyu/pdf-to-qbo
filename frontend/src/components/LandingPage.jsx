@@ -51,7 +51,7 @@ function Nav({ onGetKey }) {
     }}>
       <div style={{ ...s.container, display: "flex", alignItems: "center", height: 64 }}>
         <span style={{ fontSize: 20, fontWeight: 800, color: C.white, letterSpacing: -0.5 }}>
-          <span style={{ color: C.accent }}>PDF</span>toQBO
+          <span style={{ color: C.accent }}>Par</span>sify
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
           <a href="#pricing" style={{ color: C.muted, textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
@@ -337,7 +337,7 @@ export default function LandingPage() {
 
   function handleSuccess(key, em) {
     // persist key so the app picks it up immediately
-    localStorage.setItem("pdfqbo_api_key", key);
+    localStorage.setItem("parsify_api_key", key);
     setApiKey(key);
     setEmail(em);
     setShowForm(false);
@@ -461,7 +461,7 @@ export default function LandingPage() {
           <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>20 native parsers</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 40px" }}>
             Don't see yours? The AI fallback parser handles any layout.{" "}
-            <a href="mailto:support@pdftoqbo.com?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
+            <a href="mailto:support@parsify.io?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
             {BANKS.map(b => (
@@ -554,13 +554,13 @@ export default function LandingPage() {
       <footer style={{ borderTop: `1px solid ${C.border}`, padding: "32px 24px" }}>
         <div style={{ ...s.container, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <span style={{ color: C.muted, fontSize: 14 }}>
-            <span style={{ color: C.accent, fontWeight: 800 }}>PDF</span>toQBO · Built for accountants
+            <span style={{ color: C.accent, fontWeight: 800 }}>Par</span>sify · Built for accountants
           </span>
           <div style={{ display: "flex", gap: 24 }}>
             {[
               ["Terms of Service", "/terms"],
               ["Privacy Policy", "/privacy"],
-              ["support@pdftoqbo.com", "mailto:support@pdftoqbo.com"],
+              ["support@parsify.io", "mailto:support@parsify.io"],
             ].map(([label, href]) => (
               <a key={label} href={href} style={{ color: C.muted, fontSize: 13, textDecoration: "none" }}>{label}</a>
             ))}

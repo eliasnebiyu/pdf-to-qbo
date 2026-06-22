@@ -25,7 +25,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 // ─── API key storage ─────────────────────────────────────────────────────────
-const API_KEY_STORAGE = "pdfqbo_api_key";
+const API_KEY_STORAGE = "parsify_api_key";
 const getStoredKey  = () => localStorage.getItem(API_KEY_STORAGE) || "";
 const saveStoredKey = (k) => localStorage.setItem(API_KEY_STORAGE, k.trim());
 
@@ -1642,7 +1642,7 @@ export default function ReviewUI({
   }, [apiFetch]);
 
   // ── Session persistence (localStorage) ────────────────────────
-  const DRAFT_KEY = "pdfqbo_draft_v1";
+  const DRAFT_KEY = "parsify_draft_v1";
   const [draftBanner, setDraftBanner] = useState(false);
 
   // On mount: check for a saved draft
@@ -2070,7 +2070,7 @@ export default function ReviewUI({
       <div className="topbar">
         <div className="topbar-brand">
           <span className="brand-dot" />
-          pdf-to-qbo
+          <span style={{ color: "var(--green)" }}>Par</span>sify
         </div>
         {pdfName && (
           <div className={`topbar-file ${isMultiFile ? "multi" : ""}`}>

@@ -138,7 +138,7 @@ curl -X POST "http://localhost:8000/convert?format=ofx" \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `sqlite:///./pdf_to_qbo.db` | Database connection string |
+| `DATABASE_URL` | `sqlite:///./parsify.db` | Database connection string |
 | `STRIPE_SECRET_KEY` | — | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
 | `STRIPE_STARTER_PRICE_ID` | — | Stripe price ID for Starter plan |
@@ -170,7 +170,7 @@ Set the environment variables above in the Railway dashboard.
 ## Project Structure
 
 ```
-pdf-to-qbo/
+parsify/
 ├── cli.py                      # CLI entry point
 ├── api.py                      # FastAPI REST API + auth + Stripe
 ├── requirements.txt

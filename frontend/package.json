@@ -1,5 +1,5 @@
 {
-  "name": "pdf-to-qbo-frontend",
+  "name": "parsify-frontend",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
