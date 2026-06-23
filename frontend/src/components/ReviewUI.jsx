@@ -15,6 +15,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -984,6 +985,55 @@ const css = `
     /* Footer summary: wrap items */
     .footer-summary { flex-wrap: wrap; gap: 8px; }
   }
+
+  /* ── Demo mode banner ────────────────────────────────────────── */
+  .demo-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 20px;
+    background: linear-gradient(90deg, rgba(88,166,255,0.08) 0%, rgba(188,140,255,0.06) 100%);
+    border-bottom: 1px solid rgba(88,166,255,0.3);
+    font-size: 13px;
+    color: var(--blue);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .demo-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: var(--blue-dim);
+    border: 1px solid rgba(88,166,255,0.4);
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: var(--blue);
+    flex-shrink: 0;
+  }
+  .demo-text {
+    flex: 1;
+    color: var(--white-2);
+    font-size: 13px;
+    min-width: 0;
+  }
+  .demo-text strong { color: var(--white); }
+  .demo-cta {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--blue);
+    color: var(--ink);
+    border: none;
+    border-radius: 6px;
+    padding: 5px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .demo-cta:hover { background: #79b8ff; }
 `;
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
@@ -1019,6 +1069,41 @@ const flagReasons = (tx, balanceDeltaMap = null) => {
 };
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+// ─── Demo data ────────────────────────────────────────────────────────────────
+const DEMO_META = {
+  bank:            "JPMorgan Chase",
+  account_id:      "****4729",
+  account_type:    "CHECKING",
+  statement_start: "2025-01-01",
+  statement_end:   "2025-01-31",
+  opening_balance: 4218.43,
+  closing_balance: 8650.75,
+  warnings:        ["Balance reconciliation: computed $8,650.75 vs stated $8,612.50 — Δ$38.25 · click a row to inspect"],
+};
+
+const DEMO_TRANSACTIONS = [
+  { date:"2025-01-01", description:"ACME CORP DIRECT DEP PPD",            amount:"3200.00",  balance:"7418.43", type:"DIRECTDEP", category:"Payroll",         fit_id:"20250101DD001" },
+  { date:"2025-01-02", description:"WHOLE FOODS MARKET #412 SAN JOSE CA", amount:"-124.50", balance:"7293.93", type:"POS",       category:"Groceries",        fit_id:"20250102POS001" },
+  { date:"2025-01-03", description:"SHELL OIL 57442891600 SAN JOSE CA",   amount:"-65.20",  balance:"7228.73", type:"POS",       category:"Gas & Fuel",       fit_id:"20250103POS001" },
+  { date:"2025-01-04", description:"NETFLIX.COM 408-5403700 CA",           amount:"-15.99",  balance:"7212.74", type:"PAYMENT",   category:"Subscriptions",    fit_id:"20250104PAY001" },
+  { date:"2025-01-05", description:"CHIPOTLE MEXICAN GRILL 1482",          amount:"-13.45",  balance:"7199.29", type:"POS",       category:"Dining",           fit_id:"20250105POS001" },
+  { date:"2025-01-06", description:"AMAZON PRIME MEMBERSHIP",              amount:"-14.99",  balance:"7184.30", type:"PAYMENT",   category:"Subscriptions",    fit_id:"20250106PAY001" },
+  { date:"2025-01-07", description:"STARBUCKS STORE 12345 SAN JOSE CA",   amount:"-6.75",   balance:"7177.55", type:"POS",       category:"Dining",           fit_id:"20250107POS001" },
+  { date:"2025-01-08", description:"ZELLE FROM MIKE JOHNSON",             amount:"250.00",  balance:"7427.55", type:"XFER",      category:"Transfer In",      fit_id:"20250108XFR001" },
+  { date:"2025-01-09", description:"CHECK # 1045",                         amount:"-450.00", balance:"6977.55", type:"CHECK",     category:"Rent",             fit_id:"20250109CHK001" },
+  { date:"2025-01-10", description:"CHASE ATM WITHDRAWAL 1250 BLOSSOM HL",amount:"-200.00", balance:"6777.55", type:"ATM",       category:"Cash",             fit_id:"20250110ATM001" },
+  { date:"2025-01-11", description:"COSTCO WHOLESALE #0143 SAN JOSE CA",  amount:"-187.34", balance:"6590.21", type:"POS",       category:"Groceries",        fit_id:"20250111POS001" },
+  { date:"2025-01-12", description:"GEICO INSURANCE PREMIUM",             amount:"-142.00", balance:"6448.21", type:"PAYMENT",   category:"Insurance",        fit_id:"20250112PAY001" },
+  { date:"2025-01-14", description:"HOME DEPOT #6634 SAN JOSE CA",        amount:"-89.67",  balance:"6358.54", type:"POS",       category:"Home Improvement",  fit_id:"20250114POS001" },
+  { date:"2025-01-15", description:"ACME CORP DIRECT DEP PPD",            amount:"3200.00",  balance:"9558.54", type:"DIRECTDEP", category:"Payroll",         fit_id:"20250115DD001" },
+  { date:"2025-01-16", description:"TRADER JOE S 00512 SAN JOSE CA",      amount:"-78.23",  balance:"9480.31", type:"POS",       category:"Groceries",        fit_id:"20250116POS001" },
+  { date:"2025-01-18", description:"VERIZON WIRELESS BILL PAY",           amount:"-95.00",  balance:"9385.31", type:"PAYMENT",   category:"Phone",            fit_id:"20250118PAY001" },
+  { date:"2025-01-20", description:"ZELLE TO SARAH WILLIAMS",             amount:"-300.00", balance:"9085.31", type:"XFER",      category:"Transfer Out",     fit_id:"20250120XFR001" },
+  { date:"2025-01-22", description:"INTEREST PAYMENT",                    amount:"1.24",    balance:"9086.55", type:"INT",       category:"Interest",         fit_id:"20250122INT001" },
+  { date:"2025-01-24", description:"DELTA AIR LINES 00623419284124",      amount:"-423.80", balance:"8662.75", type:"POS",       category:"Travel",           fit_id:"20250124POS001" },
+  { date:"2025-01-28", description:"MONTHLY SERVICE FEE",                 amount:"-12.00",  balance:"8650.75", type:"FEE",       category:"Bank Fees",        fit_id:"20250128FEE001" },
+].map(tx => ({ ...tx, id: uid(), amount: String(tx.amount), balance: String(tx.balance), _demo: true }));
 
 const buildOFXFields = (tx) => {
   const dtposted = (tx.date || "").replace(/-/g, "") + "120000[0:UTC]";
@@ -1533,15 +1618,19 @@ export default function ReviewUI({
   meta:          metaProp     = null,
   onExport:      onExportProp = null,
 }) {
+  // ── Demo mode (URL param: /app?demo=true) ─────────────────────
+  const [searchParams] = useSearchParams();
+  const [isDemo, setIsDemo] = useState(() => searchParams.get("demo") === "true");
+
   // ── State ──────────────────────────────────────────────────────
   const [pdfFile,       setPdfFile]       = useState(pdfFileProp);
-  const [pdfName,       setPdfName]       = useState(null);
+  const [pdfName,       setPdfName]       = useState(isDemo ? "Chase_January_2025_demo.pdf" : null);
   const [isMultiFile,   setIsMultiFile]   = useState(false);
   const [numPages,      setNumPages]      = useState(null);
   const [currentPage,   setCurrentPage]   = useState(1);
   const [pdfScale,      setPdfScale]      = useState(0.85);
-  const [transactions,  setTransactions]  = useState(txProp || []);
-  const [meta,          setMeta]          = useState(metaProp || {});
+  const [transactions,  setTransactions]  = useState(() => isDemo ? DEMO_TRANSACTIONS : (txProp || []));
+  const [meta,          setMeta]          = useState(() => isDemo ? DEMO_META : (metaProp || {}));
   const [loading,       setLoading]       = useState(false);
   const [loadingMsg,    setLoadingMsg]    = useState("Parsing PDF…");
   const [apiError,      setApiError]      = useState(null);
@@ -1564,7 +1653,7 @@ export default function ReviewUI({
 
   // ── API key ────────────────────────────────────────────────────
   const [apiKey,       setApiKey]       = useState(getStoredKey);
-  const [showKeyModal, setShowKeyModal] = useState(!getStoredKey());
+  const [showKeyModal, setShowKeyModal] = useState(!getStoredKey() && !isDemo);
   const [usage,        setUsage]        = useState(null); // { plan, plan_label, used, remaining, limit }
 
   // ── Report parsing error ────────────────────────────────────────
@@ -1645,8 +1734,9 @@ export default function ReviewUI({
   const DRAFT_KEY = "parsify_draft_v1";
   const [draftBanner, setDraftBanner] = useState(false);
 
-  // On mount: check for a saved draft
+  // On mount: check for a saved draft (skip in demo mode)
   useEffect(() => {
+    if (isDemo) return;
     try {
       const saved = localStorage.getItem(DRAFT_KEY);
       if (saved) {
@@ -1658,9 +1748,9 @@ export default function ReviewUI({
     } catch (_) { /* ignore corrupt draft */ }
   }, []);
 
-  // Auto-save draft whenever transactions or meta change (debounced 1 s)
+  // Auto-save draft whenever transactions or meta change (debounced 1 s, skip demo)
   useEffect(() => {
-    if (transactions.length === 0) return;
+    if (isDemo || transactions.length === 0) return;
     const timer = setTimeout(() => {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -1806,6 +1896,7 @@ export default function ReviewUI({
       const data = await res.json();
       setMeta(data);
       setTransactions(data.transactions.map(tx => normaliseTx(tx, file.name)));
+      setIsDemo(false);      // exit demo mode once a real PDF is parsed
       setActivePane("table"); // switch to table pane on mobile after parse
       // Refresh quota display after a successful parse
       if (apiKey) {
@@ -1882,6 +1973,7 @@ export default function ReviewUI({
 
     setMeta({ ...primaryMeta, warnings: allWarnings });
     setTransactions(merged);
+    setIsDemo(false);       // exit demo mode on multi-file parse
     setActivePane("table"); // switch to table pane on mobile after multi-file parse
     setLoading(false);
   }, [handleSingleFile]);
@@ -2107,7 +2199,7 @@ export default function ReviewUI({
               )}
             </>);
           })()}
-          {transactions.length > 0 && (
+          {transactions.length > 0 && !isDemo && (
             <button
               className="btn"
               title="Report a parsing error"
@@ -2129,7 +2221,7 @@ export default function ReviewUI({
             onChange={e => handleFiles(e.target.files)}
           />
           <button className="btn" onClick={confirmAll}>✓ Confirm clean</button>
-          {transactions.length > 0 && (
+          {transactions.length > 0 && !isDemo && (
             <button className="btn" onClick={clearSession}
               style={{ color: "var(--muted)", borderColor: "var(--border-lt)" }}
               title="Clear session and discard draft">
@@ -2138,13 +2230,30 @@ export default function ReviewUI({
           )}
           <button
             className="btn btn-primary"
-            disabled={flagged.length > 0}
-            onClick={() => setShowExport(true)}
+            disabled={!isDemo && flagged.length > 0}
+            onClick={() => isDemo ? setShowKeyModal(true) : setShowExport(true)}
           >
-            {flagged.length > 0 ? `${flagged.length} issues — fix first` : "Export to QBO →"}
+            {isDemo
+              ? "Sign up to export →"
+              : flagged.length > 0 ? `${flagged.length} issues — fix first` : "Export to QBO →"
+            }
           </button>
         </div>
       </div>
+
+      {/* Demo mode banner */}
+      {isDemo && (
+        <div className="demo-banner">
+          <span className="demo-badge">Demo</span>
+          <span className="demo-text">
+            <strong>Sample Chase statement · Jan 2025.</strong>{" "}
+            Edit any transaction, explore the review workflow, then sign up free to parse your own PDFs.
+          </span>
+          <button className="demo-cta" onClick={() => { setShowKeyModal(true); }}>
+            Get free API key →
+          </button>
+        </div>
+      )}
 
       {/* Warnings */}
       {meta.warnings?.length > 0 && (
@@ -2549,9 +2658,10 @@ export default function ReviewUI({
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn" onClick={() => setShowAddRow(s => !s)}>+ Add row</button>
-              <button className="btn btn-primary" disabled={flagged.length > 0}
-                onClick={() => setShowExport(true)}>
-                Export →
+              <button className="btn btn-primary"
+                disabled={!isDemo && flagged.length > 0}
+                onClick={() => isDemo ? setShowKeyModal(true) : setShowExport(true)}>
+                {isDemo ? "Sign up to export →" : "Export →"}
               </button>
             </div>
           </div>

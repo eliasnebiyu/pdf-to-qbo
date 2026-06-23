@@ -389,8 +389,8 @@ export default function LandingPage() {
                   <button onClick={() => setShowForm(true)} style={{ ...s.btn, background: C.accent, color: "#fff", fontSize: 16, padding: "14px 28px" }}>
                     Get your free key →
                   </button>
-                  <button onClick={goToApp} style={{ ...s.btn, background: "transparent", color: C.muted, border: `1.5px solid ${C.border}`, fontSize: 16, padding: "14px 28px" }}>
-                    Open the app
+                  <button onClick={() => navigate("/app?demo=true")} style={{ ...s.btn, background: "transparent", color: C.muted, border: `1.5px solid ${C.border}`, fontSize: 16, padding: "14px 28px" }}>
+                    Try demo ↗
                   </button>
                 </div>
               )}
