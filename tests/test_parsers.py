@@ -12,13 +12,18 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from src.parser import detect_and_parse
+from src.parser.banks.ally import AllyParser
 from src.parser.banks.bofa import BofAParser
+from src.parser.banks.capital_one import CapitalOneParser
 from src.parser.banks.chase import ChaseParser
 from src.parser.banks.citi import CitiParser
 from src.parser.banks.fifth_third import FifthThirdParser
 from src.parser.banks.generic import GenericParser
 from src.parser.banks.pnc import PNCParser
+from src.parser.banks.schwab import SchwabParser
+from src.parser.banks.td_bank import TDBankParser
 from src.parser.banks.us_bank import USBankParser
+from src.parser.banks.usaa import USAAParser
 from src.parser.banks.wells import WellsFargoParser
 
 
@@ -95,6 +100,23 @@ _GENERIC_TABLE = [
     ["2024-01-10", "ELECTRICITY BILL", "-120.00",  "5,380.00"],
     ["2024-01-20", "SUPERMARKET",      "-95.50",   "5,284.50"],
 ]
+
+# Router test fixtures (minimal — just enough for detect_and_parse routing)
+_ALLY_HEADER   = "Ally Bank\nally.com\nStatement Period: 01/01/2024 to 01/31/2024"
+_ALLY_TABLE    = [["Date", "Description", "Amount", "Balance"],
+                  ["01/03/2024", "DIRECT DEPOSIT", "2,800.00", "3,800.00"]]
+_CAP1_HEADER   = "Capital One\ncapitalone.com\nStatement Period: 01/01/2024 to 01/31/2024"
+_CAP1_TABLE    = [["Date", "Description", "Amount"],
+                  ["01/02/2024", "DIRECT DEPOSIT", "3,100.00"]]
+_TD_HEADER     = "TD Bank\ntdbank.com\nStatement Period: 01/01/2024 to 01/31/2024"
+_TD_TABLE      = [["Date", "Description", "Debit", "Credit", "Balance"],
+                  ["01/04/2024", "PAYROLL DEPOSIT", "", "2,950.00", "3,950.00"]]
+_SCHWAB_HEADER = "Charles Schwab Bank\nschwab.com\nStatement Period: 01/01/2024 to 01/31/2024"
+_SCHWAB_TABLE  = [["Date", "Description", "Deposits/Credits", "Withdrawals", "Ending Balance"],
+                  ["01/02/2024", "ACH DIRECT DEPOSIT", "4,200.00", "", "5,200.00"]]
+_USAA_HEADER   = "USAA Federal Savings Bank\nusaa.com\nStatement Period: 01/01/2024 to 01/31/2024"
+_USAA_TABLE    = [["Date", "Description", "Amount", "Balance"],
+                  ["01/01/2024", "MILITARY PAY DIRECT DEPOSIT", "3,500.00", "4,500.00"]]
 
 
 # ── Chase parser ──────────────────────────────────────────────────────────────
@@ -819,3 +841,427 @@ class TestParserRouter:
         txt.write_bytes(b"not a pdf")
         with pytest.raises(ValueError):
             detect_and_parse(txt)
+
+    def test_routes_to_ally(self, tmp_path):
+        pdf = tmp_path / "stmt.pdf"
+        pdf.write_bytes(b"")
+        with patch_pdf([{"text": _ALLY_HEADER, "tables": [_ALLY_TABLE]}]):
+            stmt = detect_and_parse(pdf)
+        assert stmt.parser_used == "ally"
+
+    def test_routes_to_capital_one(self, tmp_path):
+        pdf = tmp_path / "stmt.pdf"
+        pdf.write_bytes(b"")
+        with patch_pdf([{"text": _CAP1_HEADER, "tables": [_CAP1_TABLE]}]):
+            stmt = detect_and_parse(pdf)
+        assert stmt.parser_used == "capital_one"
+
+    def test_routes_to_td_bank(self, tmp_path):
+        pdf = tmp_path / "stmt.pdf"
+        pdf.write_bytes(b"")
+        with patch_pdf([{"text": _TD_HEADER, "tables": [_TD_TABLE]}]):
+            stmt = detect_and_parse(pdf)
+        assert stmt.parser_used == "td_bank"
+
+    def test_routes_to_schwab(self, tmp_path):
+        pdf = tmp_path / "stmt.pdf"
+        pdf.write_bytes(b"")
+        with patch_pdf([{"text": _SCHWAB_HEADER, "tables": [_SCHWAB_TABLE]}]):
+            stmt = detect_and_parse(pdf)
+        assert stmt.parser_used == "schwab"
+
+    def test_routes_to_usaa(self, tmp_path):
+        pdf = tmp_path / "stmt.pdf"
+        pdf.write_bytes(b"")
+        with patch_pdf([{"text": _USAA_HEADER, "tables": [_USAA_TABLE]}]):
+            stmt = detect_and_parse(pdf)
+        assert stmt.parser_used == "usaa"
+
+
+# ── Ally parser ───────────────────────────────────────────────────────────────
+
+_ALLY_HEADER = "Ally Bank\nally.com\nStatement Period: 01/01/2024 to 01/31/2024"
+
+_ALLY_LINE_TEXT = (
+    _ALLY_HEADER + "\n\n"
+    "01/03/2024  DIRECT DEPOSIT PAYROLL           2,800.00  3,800.00\n"
+    "01/08/2024  ONLINE TRANSFER OUT              -500.00   3,300.00\n"
+    "01/14/2024  DEBIT CARD PURCHASE - AMAZON     -63.49    3,236.51\n"
+    "01/22/2024  INTEREST CREDITED                1.87      3,238.38\n"
+)
+
+_ALLY_TABLE = [
+    ["Date", "Description", "Amount", "Balance"],
+    ["01/03/2024", "DIRECT DEPOSIT PAYROLL",   "2,800.00", "3,800.00"],
+    ["01/08/2024", "ONLINE TRANSFER OUT",       "-500.00",  "3,300.00"],
+    ["01/14/2024", "DEBIT CARD PURCHASE AMZN",  "-63.49",   "3,236.51"],
+    ["01/22/2024", "INTEREST CREDITED",         "1.87",     "3,238.38"],
+]
+
+
+class TestAllyParser:
+
+    def test_detects_ally_statement(self):
+        with patch_pdf([{"text": _ALLY_HEADER, "tables": []}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_ally_domain(self):
+        with patch_pdf([{"text": "ally.com\nSavings Account Statement", "tables": []}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_ally(self):
+        with patch_pdf([{"text": _CHASE_HEADER, "tables": []}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_table_extraction(self):
+        with patch_pdf([{"text": _ALLY_HEADER, "tables": [_ALLY_TABLE]}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT PAYROLL"].amount == Decimal("2800.00")
+        assert by_desc["ONLINE TRANSFER OUT"].amount == Decimal("-500.00")
+        assert by_desc["INTEREST CREDITED"].amount == Decimal("1.87")
+
+    def test_line_extraction(self):
+        with patch_pdf([{"text": _ALLY_LINE_TEXT, "tables": []}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DEBIT CARD PURCHASE - AMAZON"].amount == Decimal("-63.49")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _ALLY_HEADER, "tables": [_ALLY_TABLE]}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+    def test_signs_correct(self):
+        with patch_pdf([{"text": _ALLY_HEADER, "tables": [_ALLY_TABLE]}]):
+            p = AllyParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert all(t.amount > 0 for t in stmt.transactions if "DEPOSIT" in t.description or "CREDITED" in t.description)
+        assert all(t.amount < 0 for t in stmt.transactions if "TRANSFER OUT" in t.description or "PURCHASE" in t.description)
+
+
+# ── Capital One parser ────────────────────────────────────────────────────────
+
+_CAP1_HEADER = "Capital One\ncapitalone.com\nStatement Period: 01/01/2024 to 01/31/2024"
+
+_CAP1_TABLE = [
+    ["Date", "Description", "Debit", "Credit", "Balance"],
+    ["01/02/2024", "DIRECT DEPOSIT",     "",       "3,100.00", "4,100.00"],
+    ["01/07/2024", "GROCERY STORE",      "89.45",  "",         "4,010.55"],
+    ["01/12/2024", "NETFLIX",            "15.99",  "",         "3,994.56"],
+    ["01/20/2024", "ATM WITHDRAWAL",     "200.00", "",         "3,794.56"],
+]
+
+_CAP1_CC_TEXT = (
+    "Capital One\ncapitalone.com\nQuicksilver Card\n"
+    "Minimum payment due\nCredit limit $5,000\nNew balance\n\n"
+    "Jan 03  AMAZON.COM                  45.99\n"
+    "Jan 08  WHOLE FOODS MARKET          67.23\n"
+    "Jan 15  PAYMENT THANK YOU          -200.00\n"
+)
+
+
+class TestCapitalOneParser:
+
+    def test_detects_capital_one(self):
+        with patch_pdf([{"text": _CAP1_HEADER, "tables": []}]):
+            p = CapitalOneParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_quicksilver(self):
+        with patch_pdf([{"text": "Capital One\nQuicksilver Card Member", "tables": []}]):
+            p = CapitalOneParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_capital_one(self):
+        with patch_pdf([{"text": _BOFA_HEADER, "tables": []}]):
+            p = CapitalOneParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_checking_table_debit_credit_cols(self):
+        """Checking: separate Debit and Credit columns; debits flip negative."""
+        with patch_pdf([{"text": _CAP1_HEADER, "tables": [_CAP1_TABLE]}]):
+            p = CapitalOneParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "capital_one"
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT"].amount == Decimal("3100.00")
+        assert by_desc["GROCERY STORE"].amount == Decimal("-89.45")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-200.00")
+
+    def test_credit_card_line_parsing(self):
+        """CC statements: positive charges flipped to negative."""
+        with patch_pdf([{"text": _CAP1_CC_TEXT, "tables": []}]):
+            p = CapitalOneParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        # CC charges positive in PDF → negative in OFX
+        assert by_desc["AMAZON.COM"].amount == Decimal("-45.99")
+        assert by_desc["WHOLE FOODS MARKET"].amount == Decimal("-67.23")
+        # Payment is negative in PDF (credit back) → positive in OFX
+        assert by_desc["PAYMENT THANK YOU"].amount == Decimal("200.00")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _CAP1_HEADER, "tables": [_CAP1_TABLE]}]):
+            p = CapitalOneParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── TD Bank parser ────────────────────────────────────────────────────────────
+
+_TD_HEADER = "TD Bank\ntdbank.com\nStatement Period: 01/01/2024 to 01/31/2024"
+
+_TD_TABLE = [
+    ["Date", "Description", "Debit", "Credit", "Balance"],
+    ["01/04/2024", "PAYROLL DIRECT DEPOSIT",  "",       "2,950.00", "3,950.00"],
+    ["01/09/2024", "GROCERY STORE",           "102.34", "",         "3,847.66"],
+    ["01/16/2024", "UTILITY PAYMENT",         "178.00", "",         "3,669.66"],
+    ["01/23/2024", "ATM WITHDRAWAL",          "300.00", "",         "3,369.66"],
+]
+
+_TD_LINE_TEXT = (
+    _TD_HEADER + "\n\n"
+    "01/04/2024  PAYROLL DIRECT DEPOSIT         2,950.00  3,950.00\n"
+    "01/09/2024  GROCERY STORE                  -102.34   3,847.66\n"
+    "01/16/2024  UTILITY PAYMENT                -178.00   3,669.66\n"
+)
+
+
+class TestTDBankParser:
+
+    def test_detects_td_bank(self):
+        with patch_pdf([{"text": _TD_HEADER, "tables": []}]):
+            p = TDBankParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_tdbank_domain(self):
+        with patch_pdf([{"text": "tdbank.com\nConvenience Checking", "tables": []}]):
+            p = TDBankParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_td(self):
+        with patch_pdf([{"text": _ALLY_HEADER, "tables": []}]):
+            p = TDBankParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_debit_credit_table(self):
+        with patch_pdf([{"text": _TD_HEADER, "tables": [_TD_TABLE]}]):
+            p = TDBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "td_bank"
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["PAYROLL DIRECT DEPOSIT"].amount == Decimal("2950.00")
+        assert by_desc["GROCERY STORE"].amount == Decimal("-102.34")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-300.00")
+
+    def test_line_fallback(self):
+        with patch_pdf([{"text": _TD_LINE_TEXT, "tables": []}]):
+            p = TDBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 3
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["PAYROLL DIRECT DEPOSIT"].amount == Decimal("2950.00")
+        assert by_desc["UTILITY PAYMENT"].amount == Decimal("-178.00")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _TD_HEADER, "tables": [_TD_TABLE]}]):
+            p = TDBankParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── Charles Schwab parser ─────────────────────────────────────────────────────
+
+_SCHWAB_HEADER = "Charles Schwab Bank\nschwab.com\nStatement Period: 01/01/2024 to 01/31/2024"
+
+_SCHWAB_TABLE = [
+    ["Date", "Description", "Deposits/Credits", "Withdrawals", "Ending Balance"],
+    ["01/02/2024", "ACH DIRECT DEPOSIT",     "4,200.00", "",       "5,200.00"],
+    ["01/06/2024", "ATM WITHDRAWAL",         "",         "200.00", "5,000.00"],
+    ["01/11/2024", "AMAZON.COM",             "",         "53.20",  "4,946.80"],
+    ["01/25/2024", "INTEREST",               "2.14",     "",       "4,948.94"],
+]
+
+_SCHWAB_LINE_TEXT = (
+    _SCHWAB_HEADER + "\n\n"
+    "01/02/2024  ACH DIRECT DEPOSIT        4,200.00   5,200.00\n"
+    "01/06/2024  ATM WITHDRAWAL           -200.00    5,000.00\n"
+    "01/11/2024  AMAZON.COM               -53.20     4,946.80\n"
+)
+
+
+class TestSchwabParser:
+
+    def test_detects_schwab(self):
+        with patch_pdf([{"text": _SCHWAB_HEADER, "tables": []}]):
+            p = SchwabParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_schwab_domain(self):
+        with patch_pdf([{"text": "schwab.com\nHigh Yield Investor Checking", "tables": []}]):
+            p = SchwabParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_schwab(self):
+        with patch_pdf([{"text": _TD_HEADER, "tables": []}]):
+            p = SchwabParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_deposits_withdrawals_table(self):
+        """Schwab splits amounts into Deposits/Credits and Withdrawals columns."""
+        with patch_pdf([{"text": _SCHWAB_HEADER, "tables": [_SCHWAB_TABLE]}]):
+            p = SchwabParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "schwab"
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["ACH DIRECT DEPOSIT"].amount == Decimal("4200.00")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-200.00")
+        assert by_desc["INTEREST"].amount == Decimal("2.14")
+
+    def test_line_fallback(self):
+        with patch_pdf([{"text": _SCHWAB_LINE_TEXT, "tables": []}]):
+            p = SchwabParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 3
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["ACH DIRECT DEPOSIT"].amount == Decimal("4200.00")
+        assert by_desc["AMAZON.COM"].amount == Decimal("-53.20")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _SCHWAB_HEADER, "tables": [_SCHWAB_TABLE]}]):
+            p = SchwabParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── USAA parser ───────────────────────────────────────────────────────────────
+
+_USAA_HEADER = "USAA Federal Savings Bank\nusaa.com\nStatement Period: 01/01/2024 to 01/31/2024"
+
+_USAA_TABLE = [
+    ["Date", "Description", "Amount", "Balance"],
+    ["01/01/2024", "MILITARY PAY DIRECT DEPOSIT", "3,500.00",  "4,500.00"],
+    ["01/05/2024", "DEBIT PURCHASE - GAS STATION", "-55.00",   "4,445.00"],
+    ["01/10/2024", "DEBIT PURCHASE - COMMISSARY",  "-112.45",  "4,332.55"],
+    ["01/15/2024", "MILITARY PAY DIRECT DEPOSIT",  "3,500.00", "7,832.55"],
+    ["01/20/2024", "ATM WITHDRAWAL",               "-200.00",  "7,632.55"],
+]
+
+_USAA_CC_TEXT = (
+    "USAA\nusaa.com\nUSAA Cashback Rewards\n"
+    "Credit limit $10,000\nMinimum payment due\nNew balance\nPurchase APR\n\n"
+    "01/03/2024  RESTAURANT CHARGE         28.50\n"
+    "01/09/2024  ONLINE SHOPPING           99.99\n"
+    "01/15/2024  PAYMENT RECEIVED         -300.00\n"
+)
+
+
+class TestUSAAParser:
+
+    def test_detects_usaa(self):
+        with patch_pdf([{"text": _USAA_HEADER, "tables": []}]):
+            p = USAAParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_detects_by_usaa_domain(self):
+        with patch_pdf([{"text": "usaa.com\nBank Statement", "tables": []}]):
+            p = USAAParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_usaa(self):
+        with patch_pdf([{"text": _SCHWAB_HEADER, "tables": []}]):
+            p = USAAParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_checking_table(self):
+        with patch_pdf([{"text": _USAA_HEADER, "tables": [_USAA_TABLE]}]):
+            p = USAAParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "usaa"
+        assert stmt.transaction_count == 5
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["MILITARY PAY DIRECT DEPOSIT"].amount == Decimal("3500.00")
+        assert by_desc["DEBIT PURCHASE - GAS STATION"].amount == Decimal("-55.00")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-200.00")
+
+    def test_credit_card_mode(self):
+        """USAA CC: positive charges flipped to negative."""
+        with patch_pdf([{"text": _USAA_CC_TEXT, "tables": []}]):
+            p = USAAParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["RESTAURANT CHARGE"].amount == Decimal("-28.50")
+        assert by_desc["ONLINE SHOPPING"].amount == Decimal("-99.99")
+        # USAA CC mode only negates positive amounts (charges); payments already
+        # negative in the PDF are left as-is by the parser.
+        assert by_desc["PAYMENT RECEIVED"].amount == Decimal("-300.00")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _USAA_HEADER, "tables": [_USAA_TABLE]}]):
+            p = USAAParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))

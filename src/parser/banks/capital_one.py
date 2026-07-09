@@ -107,6 +107,19 @@ class CapitalOneParser(BaseParser):
             return []
         year = _year_from(self.full_text)
         txns = []
+
+        # Detect Debit/Credit/Balance column layout from header row
+        debit_col = credit_col = balance_col = -1
+        if table and table[0]:
+            headers = [str(h or "").lower().strip() for h in table[0]]
+            if "debit" in headers and "credit" in headers:
+                try:
+                    debit_col  = headers.index("debit")
+                    credit_col = headers.index("credit")
+                    balance_col = headers.index("balance") if "balance" in headers else -1
+                except ValueError:
+                    pass
+
         for row in table:
             if not row or len(row) < 2:
                 continue
@@ -120,18 +133,32 @@ class CapitalOneParser(BaseParser):
             if not desc:
                 continue
 
-            if len(row) >= 5:
+            balance = None
+            if debit_col >= 0 and credit_col >= 0 and len(row) > max(debit_col, credit_col):
+                # Checking: Date | Desc | Debit | Credit | Balance
+                # Credits are deposits (positive); debits are charges (negative).
+                debit_raw  = (row[debit_col]  or "").strip()
+                credit_raw = (row[credit_col] or "").strip()
+                if balance_col >= 0 and len(row) > balance_col:
+                    balance = parse_amount(row[balance_col])
+                if credit_raw:
+                    amount = parse_amount(credit_raw)
+                elif debit_raw:
+                    debit = parse_amount(debit_raw)
+                    amount = -debit if debit is not None else None
+                else:
+                    continue
+            elif len(row) >= 5:
                 # Could be: date, posted, desc, category, amount
-                # or:       date, desc, debit, credit, balance
                 raw_amount = row[-1] or row[-2] or ""
-                balance    = None
+                amount = parse_amount(raw_amount)
             elif len(row) >= 3:
                 raw_amount = row[-1] or ""
                 balance    = parse_amount(row[-1]) if len(row) == 4 else None
+                amount     = parse_amount(raw_amount)
             else:
                 continue
 
-            amount = parse_amount(raw_amount)
             if amount is None:
                 continue
 

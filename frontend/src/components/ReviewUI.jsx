@@ -986,6 +986,48 @@ const css = `
     .footer-summary { flex-wrap: wrap; gap: 8px; }
   }
 
+  /* ── Onboarding checklist ───────────────────────────────────── */
+  .onboarding {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 40px 24px;
+    gap: 10px;
+  }
+  .onboarding-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--white);
+    margin: 8px 0 2px;
+  }
+  .onboarding-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    width: 100%;
+    max-width: 380px;
+    padding: 13px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--ink-3);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .onboarding-step.ob-done   { border-color: var(--green-dim); }
+  .onboarding-step.ob-active { border-color: var(--blue); background: var(--blue-dim); }
+  .ob-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .ob-num.ob-done   { background: var(--green); color: var(--ink); }
+  .ob-num.ob-active { background: var(--blue);  color: var(--ink); }
+  .ob-num.ob-pending { background: var(--ink-2); color: var(--muted); border: 1px solid var(--border); }
+  .ob-title   { font-size: 14px; font-weight: 600; color: var(--white); margin-bottom: 2px; }
+  .ob-sub     { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
   /* ── Demo mode banner ────────────────────────────────────────── */
   .demo-banner {
     display: flex;
@@ -1607,6 +1649,77 @@ function UpgradeModal({ onClose, onCheckout, busy, error }) {
           billing dashboard.
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Onboarding checklist ──────────────────────────────────────────────────────
+function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
+  const steps = [
+    {
+      title: "Add your API key",
+      sub: apiKey
+        ? `Active — key …${apiKey.slice(-6)}`
+        : 'Required to parse PDFs. Click "Add key" above or sign up free.',
+      done: !!apiKey,
+      cta: !apiKey ? { label: "Add key →", action: onAddKey } : null,
+    },
+    {
+      title: "Upload a bank statement",
+      sub: "Drop any bank PDF — Chase, BofA, Amex and 17 others natively supported.",
+      done: false,
+      cta: apiKey ? { label: "Upload PDF →", action: onUpload } : null,
+    },
+    {
+      title: "Review & edit inline",
+      sub: "Fix descriptions, split transactions, assign categories, reconcile balances.",
+      done: false,
+    },
+    {
+      title: "Export to QuickBooks",
+      sub: "Download OFX or QFX and import into QuickBooks Online in two clicks.",
+      done: false,
+    },
+  ];
+
+  const firstPending = steps.findIndex(s => !s.done);
+
+  return (
+    <div className="onboarding">
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 32, marginBottom: 6 }}>📄</div>
+        <div className="onboarding-title">Get started with Parsify</div>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 16px" }}>
+          Four steps to your first QuickBooks export
+        </p>
+      </div>
+      {steps.map((step, i) => {
+        const state = step.done ? "ob-done" : i === firstPending ? "ob-active" : "ob-pending";
+        return (
+          <div key={i} className={`onboarding-step ${state}`}>
+            <div className={`ob-num ${state}`}>
+              {step.done ? "✓" : i + 1}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="ob-title">{step.title}</div>
+              <div className="ob-sub">{step.sub}</div>
+              {step.cta && (
+                <button
+                  className="btn btn-primary"
+                  style={{ marginTop: 10, fontSize: 12, padding: "5px 14px" }}
+                  onClick={step.cta.action}
+                >
+                  {step.cta.label}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>
+        No data yet? Try the{" "}
+        <a href="/app?demo=true" style={{ color: "var(--blue)" }}>live demo →</a>
+      </p>
     </div>
   );
 }
@@ -2468,12 +2581,12 @@ export default function ReviewUI({
                 <div style={{ marginBottom: 8, fontWeight: 500 }}>⚠ Parse error</div>
                 <div style={{ color: "var(--white-2)", lineHeight: 1.5 }}>{apiError}</div>
               </div>
-            ) : !pdfFile ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>
-                <span style={{ fontSize: 28, opacity: 0.4 }}>⇪</span>
-                Upload a PDF to get started
-                <span style={{ fontSize: 11, opacity: 0.6 }}>Drag &amp; drop or click "Upload PDF"</span>
-              </div>
+            ) : transactions.length === 0 && !isDemo ? (
+              <OnboardingChecklist
+                apiKey={apiKey}
+                onUpload={() => fileInputRef.current?.click()}
+                onAddKey={() => setShowKeyModal(true)}
+              />
             ) : (
               <table>
                 <thead>
