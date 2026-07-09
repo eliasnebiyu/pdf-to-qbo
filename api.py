@@ -79,6 +79,26 @@ from src.parser import detect_and_parse, list_supported_banks
 from src.utils.categorize import categorize_transactions
 from src.utils.dedup import merge_statements
 
+# ── Sentry error tracking ──────────────────────────────────────────────────────
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+
+_SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=0.2,   # 20 % of requests traced — adjust up in prod
+        profiles_sample_rate=0.1,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        # Don't send user emails to Sentry — keep it anonymous
+        send_default_pii=False,
+    )
+
 # ── Rate limiter ───────────────────────────────────────────────────────────────
 
 
