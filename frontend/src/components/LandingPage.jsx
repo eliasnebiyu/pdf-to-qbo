@@ -245,7 +245,7 @@ function AppPreview() {
       <div style={{ padding: "10px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ color: C.muted, fontSize: 11 }}>✓ Balance reconciled · 0 discrepancies</span>
         <button style={{ ...s.btn, padding: "7px 16px", fontSize: 12, background: C.accent, color: "#fff" }}>
-          Export to QuickBooks
+          Export to QuickBooks®
         </button>
       </div>
     </div>
@@ -371,12 +371,12 @@ export default function LandingPage() {
 
             <h1 style={{ fontSize: "clamp(32px, 4vw, 52px)", fontWeight: 900, lineHeight: 1.1, margin: "0 0 20px", letterSpacing: -1 }}>
               Turn any bank statement PDF into{" "}
-              <span style={{ color: C.accent }}>QuickBooks data</span>{" "}
+              <span style={{ color: C.accent }}>OFX files for QuickBooks®</span>{" "}
               in seconds
             </h1>
             <p style={{ fontSize: 17, color: C.muted, margin: "0 0 36px", lineHeight: 1.7, maxWidth: 480 }}>
               Upload your PDF, edit every transaction inline, reconcile against real balances, then export.
-              The only converter that shows you exactly what it parsed — and lets you fix it before it hits QuickBooks.
+              The only converter that shows you exactly what it parsed — and lets you fix it before importing into QuickBooks.
             </p>
 
             <div id="hero-cta">
@@ -413,7 +413,7 @@ export default function LandingPage() {
             {[
               { n: "01", title: "Upload your PDF", body: "Drop any bank statement — Chase, Fifth Third, Amex, 20 banks total. Batch upload multiple months at once." },
               { n: "02", title: "Review & edit inline", body: "Every transaction is editable. Fix misreads, split transactions, assign categories, reconcile balances." },
-              { n: "03", title: "Export to QuickBooks", body: "Download OFX, QFX, or CSV. Import into QuickBooks Online in two clicks. QuickBooks direct push coming soon." },
+              { n: "03", title: "Export for QuickBooks®", body: "Download OFX, QFX, or CSV. Import into QuickBooks Online in two clicks." },
             ].map(({ n, title, body }) => (
               <div key={n} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <span style={{ fontSize: 40, fontWeight: 900, color: C.accentBg, WebkitTextStroke: `2px ${C.accent}`, fontVariantNumeric: "tabular-nums" }}>{n}</span>
@@ -436,7 +436,7 @@ export default function LandingPage() {
               icon="✏️"
               tag="ONLY US"
               title="Edit before you export"
-              sub="Inline editing with live balance reconciliation. Fix parser misreads, split one transaction into many, override categories — before anything touches QuickBooks. Every competitor dumps a file and hopes for the best."
+              sub="Inline editing with live balance reconciliation. Fix parser misreads, split one transaction into many, override categories — before importing into QuickBooks. Every competitor dumps a file and hopes for the best."
             />
             <DiffCard
               icon="⚡"
@@ -508,7 +508,7 @@ export default function LandingPage() {
                 "Everything in Free",
                 "API access",
                 "Priority email support",
-                "Session history",
+                "Session history (roadmap)",
               ]}
               cta="Start Starter"
               onCta={scrollToKey}
@@ -520,9 +520,9 @@ export default function LandingPage() {
               features={[
                 "Unlimited conversions",
                 "Everything in Starter",
-                "Accountant workspace (soon)",
-                "QuickBooks direct push (soon)",
-                "White-label exports (soon)",
+                "Accountant workspace (roadmap)",
+                "Direct QBO import (roadmap)",
+                "White-label exports (roadmap)",
               ]}
               cta="Go Pro"
               onCta={scrollToKey}
@@ -565,6 +565,12 @@ export default function LandingPage() {
               <a key={label} href={href} style={{ color: C.muted, fontSize: 13, textDecoration: "none" }}>{label}</a>
             ))}
           </div>
+        </div>
+        <div style={{ ...s.container, marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+          <p style={{ color: C.muted, fontSize: 11, margin: 0, lineHeight: 1.6 }}>
+            QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+            LedgerFlow exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks and other accounting software.
+          </p>
         </div>
       </footer>
     </div>

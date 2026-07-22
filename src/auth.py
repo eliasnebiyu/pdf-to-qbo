@@ -19,9 +19,11 @@ key skips quota checks entirely — useful for testing and seeding data.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -29,6 +31,16 @@ from typing import Optional
 
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
+
+# Process-level lock: makes quota check + increment atomic for single-process deploys.
+# For multi-process (multiple uvicorn workers / Railway replicas) upgrade to
+# a PostgreSQL advisory lock or Redis INCR+EXPIRE once you need horizontal scale.
+_quota_lock = threading.Lock()
+
+
+def _hash_key(raw_key: str) -> str:
+    """SHA-256 hex digest of a raw API key.  This is what we store in the DB."""
+    return hashlib.sha256(raw_key.encode()).hexdigest()
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -82,26 +94,38 @@ def _get_conn():
 # ── Key lifecycle ──────────────────────────────────────────────────────────────
 
 def create_api_key(email: str, plan: str = "free") -> str:
-    """Generate and persist a new API key.  Returns the key string."""
+    """
+    Generate a new API key, persist its SHA-256 hash, and return the raw key.
+
+    The raw key is returned exactly once and is never written to persistent
+    storage.  All subsequent lookups hash the incoming key before querying.
+    """
     _ensure_db()
-    key = "qbo_" + secrets.token_hex(24)
-    now = datetime.now(timezone.utc)
+    raw_key  = "lf_" + secrets.token_hex(24)   # 51-char key
+    key_hash = _hash_key(raw_key)
+    now      = datetime.now(timezone.utc)
     with _get_conn() as conn:
         conn.execute(
             """INSERT INTO api_keys
                (key, email, plan, status, conversions_used, period_start, created_at)
                VALUES (?, ?, ?, 'active', 0, ?, ?)""",
-            (key, email.lower().strip(), plan,
+            (key_hash, email.lower().strip(), plan,
              now.date().isoformat(), now.isoformat()),
         )
-    return key
+    return raw_key
 
 
-def get_key_record(key: str) -> Optional[dict]:
-    """Return the DB row for *key* as a plain dict, or None if not found."""
+def get_key_record(raw_key: str) -> Optional[dict]:
+    """
+    Return the DB row for *raw_key* as a plain dict, or None if not found.
+    The key is hashed before the DB lookup — the hash is what we store.
+    """
     _ensure_db()
+    key_hash = _hash_key(raw_key)
     with _get_conn() as conn:
-        row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (key,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM api_keys WHERE key = ?", (key_hash,)
+        ).fetchone()
         return dict(row) if row else None
 
 # ── Plan management (called by billing.py webhook handlers) ───────────────────
@@ -112,6 +136,13 @@ def update_plan(
     customer_id: str | None = None,
     subscription_id: str | None = None,
 ) -> None:
+    """
+    Upgrade / downgrade a key's plan.
+
+    *key* is the value from Stripe session metadata — which is record["key"]
+    (the SHA-256 hash) placed there by create_checkout_session.  We therefore
+    use it directly as the DB key without re-hashing.
+    """
     _ensure_db()
     with _get_conn() as conn:
         conn.execute(
@@ -175,11 +206,19 @@ def _maybe_reset_period(record: dict) -> dict:
 
 
 def increment_usage(key: str, count: int = 1) -> None:
-    """Increment usage counter by *count* with NO quota check."""
+    """
+    Increment usage counter by *count* with NO quota check.
+
+    *key* may be the raw API key (from an incoming request) or an already-
+    hashed key (from record["key"] returned by get_key_record).  We detect
+    this by checking the format: raw keys start with 'lf_'; everything else
+    is treated as an already-hashed value.
+    """
+    key_hash = key if not key.startswith("lf_") else _hash_key(key)
     with _get_conn() as conn:
         conn.execute(
             "UPDATE api_keys SET conversions_used = conversions_used + ? WHERE key = ?",
-            (count, key),
+            (count, key_hash),
         )
 
 
@@ -234,12 +273,19 @@ def validate_and_check_quota(key: str, count: int = 1) -> dict:
 
 
 def check_and_increment(key: str, count: int = 1) -> dict:
-    """Validate + quota-check + increment.  Returns the updated record dict."""
-    record = validate_and_check_quota(key, count)
-    # Admin bypass already returned above — skip increment for admin
-    if record.get("email") != "admin":
-        increment_usage(key, count)
-        record = {**record, "conversions_used": record["conversions_used"] + count}
+    """
+    Atomically validate, quota-check, and increment in one locked section.
+
+    The _quota_lock ensures that two concurrent requests with the same key
+    cannot both pass the quota check before either has incremented the counter
+    (race condition that would allow double-spending quota).
+    """
+    with _quota_lock:
+        record = validate_and_check_quota(key, count)
+        # Admin bypass already returned above — skip increment for admin
+        if record.get("email") != "admin":
+            increment_usage(key, count)
+            record = {**record, "conversions_used": record["conversions_used"] + count}
     return record
 
 # ── FastAPI dependencies ───────────────────────────────────────────────────────

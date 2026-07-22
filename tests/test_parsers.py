@@ -1265,3 +1265,415 @@ class TestUSAAParser:
 
         ids = [t.fit_id for t in stmt.transactions]
         assert len(ids) == len(set(ids))
+
+
+# ── American Express parser ───────────────────────────────────────────────────
+
+_AMEX_HEADER = (
+    "americanexpress.com\n"
+    "Account Ending 1-23001\n"
+    "Closing Date 01/25/24\n"
+    "Previous Balance $500.00\n"
+    "New Balance $350.75\n"
+    "Pay Over Time\n"
+)
+
+_AMEX_TX_TEXT = (
+    _AMEX_HEADER
+    + "\nPayments and Credits\n"
+    + "Detail\n"
+    + "01/10/24  ONLINE PAYMENT - THANK YOU  -$150.00\n"
+    + "\nNew Charges\n"
+    + "Detail\n"
+    + "01/05/24  AMAZON.COM PURCHASE  $45.99\n"
+    + "01/12/24  WHOLE FOODS MARKET  $67.23\n"
+    + "01/18/24  RESTAURANT NYC NY  $38.53\n"
+    + "\nFees\n"
+    + "Detail\n"
+    + "01/25/24  ANNUAL MEMBERSHIP FEE  $95.00\n"
+)
+
+from src.parser.banks.amex import AmexParser
+
+
+class TestAmexParser:
+
+    def test_detects_amex(self):
+        with patch_pdf([{"text": _AMEX_HEADER, "tables": []}]):
+            p = AmexParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_amex(self):
+        with patch_pdf([{"text": _CHASE_HEADER, "tables": []}]):
+            p = AmexParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_transaction_parsing(self):
+        with patch_pdf([{"text": _AMEX_TX_TEXT, "tables": []}]):
+            p = AmexParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "amex"
+        assert stmt.transaction_count == 5
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        # Payment in PDF is negative → positive in OFX (negate)
+        assert by_desc["ONLINE PAYMENT - THANK YOU"].amount == Decimal("150.00")
+        # Charges in PDF are positive → negative in OFX (negate)
+        assert by_desc["AMAZON.COM PURCHASE"].amount == Decimal("-45.99")
+        assert by_desc["WHOLE FOODS MARKET"].amount == Decimal("-67.23")
+
+    def test_credit_card_signs(self):
+        """All charges must be negative, all payments/credits must be positive."""
+        with patch_pdf([{"text": _AMEX_TX_TEXT, "tables": []}]):
+            p = AmexParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        # Payment should be positive (credit back to user)
+        assert by_desc["ONLINE PAYMENT - THANK YOU"].amount > 0
+        # Regular charges should be negative
+        assert by_desc["AMAZON.COM PURCHASE"].amount < 0
+        assert by_desc["WHOLE FOODS MARKET"].amount < 0
+        assert by_desc["ANNUAL MEMBERSHIP FEE"].amount < 0
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _AMEX_TX_TEXT, "tables": []}]):
+            p = AmexParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── Navy Federal Credit Union parser ─────────────────────────────────────────
+
+_NFCU_HEADER = (
+    "Navy Federal Credit Union\nnavyfederal.org\n"
+    "Statement Period: 01/01/2024 to 01/31/2024\n"
+    "Account Number: ****5678\n"
+)
+
+_NFCU_TABLE = [
+    ["Date", "Description", "Withdrawals", "Deposits", "Balance"],
+    ["01/03/2024", "MILITARY PAY",               "",        "3,200.00", "4,200.00"],
+    ["01/08/2024", "DEBIT CARD PURCHASE",        "85.50",   "",         "4,114.50"],
+    ["01/15/2024", "ATM WITHDRAWAL",             "200.00",  "",         "3,914.50"],
+    ["01/22/2024", "ONLINE TRANSFER FROM SAV",   "",        "500.00",   "4,414.50"],
+]
+
+_NFCU_CC_TEXT = (
+    "Navy Federal Credit Union\nnavyfederal.org\n"
+    "Credit limit $15,000\nMinimum payment due $25.00\n"
+    "New balance $342.11\nStatement balance\n\n"
+    "01/04/2024  GROCERY STORE PURCHASE          55.23  4,144.77\n"
+    "01/11/2024  RESTAURANT PURCHASE             38.90  4,105.87\n"
+    "01/20/2024  PAYMENT RECEIVED               -200.00  4,305.87\n"
+)
+
+from src.parser.banks.navy_federal import NavyFederalParser
+
+
+class TestNavyFederalParser:
+
+    def test_detects_navy_federal(self):
+        with patch_pdf([{"text": _NFCU_HEADER, "tables": []}]):
+            p = NavyFederalParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_navy_federal(self):
+        with patch_pdf([{"text": _CHASE_HEADER, "tables": []}]):
+            p = NavyFederalParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_transaction_parsing(self):
+        """5-column checking layout: withdrawals → negative, deposits → positive."""
+        with patch_pdf([{"text": _NFCU_HEADER, "tables": [_NFCU_TABLE]}]):
+            p = NavyFederalParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "navy_federal"
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["MILITARY PAY"].amount == Decimal("3200.00")
+        assert by_desc["DEBIT CARD PURCHASE"].amount == Decimal("-85.50")
+        assert by_desc["ATM WITHDRAWAL"].amount == Decimal("-200.00")
+        assert by_desc["ONLINE TRANSFER FROM SAV"].amount == Decimal("500.00")
+
+    def test_credit_card_signs(self):
+        """Navy Federal CC: positive PDF amounts → negative OFX amounts."""
+        with patch_pdf([{"text": _NFCU_CC_TEXT, "tables": []}]):
+            p = NavyFederalParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "navy_federal_cc"
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["GROCERY STORE PURCHASE"].amount == Decimal("-55.23")
+        assert by_desc["RESTAURANT PURCHASE"].amount == Decimal("-38.90")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _NFCU_HEADER, "tables": [_NFCU_TABLE]}]):
+            p = NavyFederalParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── Truist Bank parser ────────────────────────────────────────────────────────
+
+_TRUIST_HEADER = (
+    "Truist Bank\ntruistbank.com\n"
+    "Statement Period: 01/01/2024 to 01/31/2024\n"
+    "Account Number: ****9012\n"
+)
+
+_TRUIST_TABLE = [
+    ["Date", "Description", "Amount", "Balance"],
+    ["01/05/2024", "DIRECT DEPOSIT PAYROLL", "2,750.00", "3,750.00"],
+    ["01/10/2024", "DEBIT CARD PURCHASE",    "-65.40",   "3,684.60"],
+    ["01/17/2024", "ONLINE BILL PAYMENT",    "-120.00",  "3,564.60"],
+    ["01/25/2024", "MOBILE DEPOSIT",         "500.00",   "4,064.60"],
+]
+
+_TRUIST_DEBIT_CREDIT_TABLE = [
+    ["Date", "Description", "Debit", "Credit", "Balance"],
+    ["01/03/2024", "PAYROLL DIRECT DEPOSIT",  "",        "2,750.00", "3,750.00"],
+    ["01/08/2024", "GROCERY STORE",           "78.22",   "",         "3,671.78"],
+    ["01/20/2024", "UTILITY PAYMENT",         "155.00",  "",         "3,516.78"],
+]
+
+_TRUIST_LINE_TEXT = (
+    _TRUIST_HEADER + "\n"
+    "01/05/2024  DIRECT DEPOSIT PAYROLL          2,750.00  3,750.00\n"
+    "01/10/2024  DEBIT CARD PURCHASE             -65.40    3,684.60\n"
+    "01/17/2024  ONLINE BILL PAYMENT             -120.00   3,564.60\n"
+)
+
+from src.parser.banks.truist import TruistParser
+
+
+class TestTruistParser:
+
+    def test_detects_truist(self):
+        with patch_pdf([{"text": _TRUIST_HEADER, "tables": []}]):
+            p = TruistParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_truist(self):
+        with patch_pdf([{"text": _BOFA_HEADER, "tables": []}]):
+            p = TruistParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_transaction_parsing(self):
+        """Standard 4-column table layout."""
+        with patch_pdf([{"text": _TRUIST_HEADER, "tables": [_TRUIST_TABLE]}]):
+            p = TruistParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "truist"
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT PAYROLL"].amount == Decimal("2750.00")
+        assert by_desc["DEBIT CARD PURCHASE"].amount == Decimal("-65.40")
+        assert by_desc["ONLINE BILL PAYMENT"].amount == Decimal("-120.00")
+        assert by_desc["MOBILE DEPOSIT"].amount == Decimal("500.00")
+
+    def test_debit_credit_table(self):
+        """5-column debit/credit layout: debits → negative, credits → positive."""
+        with patch_pdf([{"text": _TRUIST_HEADER, "tables": [_TRUIST_DEBIT_CREDIT_TABLE]}]):
+            p = TruistParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 3
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["PAYROLL DIRECT DEPOSIT"].amount == Decimal("2750.00")
+        assert by_desc["GROCERY STORE"].amount == Decimal("-78.22")
+        assert by_desc["UTILITY PAYMENT"].amount == Decimal("-155.00")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _TRUIST_HEADER, "tables": [_TRUIST_TABLE]}]):
+            p = TruistParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── Fidelity parser ───────────────────────────────────────────────────────────
+
+_FIDELITY_HEADER = (
+    "Fidelity Investments\nfidelity.com\n"
+    "Statement Period: 01/01/2024 to 01/31/2024\n"
+    "Account Number: Z12345678\n"
+)
+
+_FIDELITY_CMA_TABLE = [
+    ["Date", "Description", "Deposits/Credits", "Withdrawals/Debits", "Balance"],
+    ["01/04/2024", "DIRECT DEPOSIT",         "3,000.00", "",        "4,000.00"],
+    ["01/09/2024", "ATM DEBIT CARD PURCHASE","",         "82.15",   "3,917.85"],
+    ["01/16/2024", "BILL PAYMENT ELECTRIC",  "",         "130.00",  "3,787.85"],
+    ["01/23/2024", "INTEREST CREDITED",      "1.55",     "",        "3,789.40"],
+]
+
+_FIDELITY_LINE_TEXT = (
+    _FIDELITY_HEADER + "\n"
+    "01/04/2024  DIRECT DEPOSIT             3,000.00  4,000.00\n"
+    "01/09/2024  ATM DEBIT CARD PURCHASE    -82.15    3,917.85\n"
+    "01/16/2024  BILL PAYMENT ELECTRIC      -130.00   3,787.85\n"
+)
+
+from src.parser.banks.fidelity import FidelityParser
+
+
+class TestFidelityParser:
+
+    def test_detects_fidelity(self):
+        with patch_pdf([{"text": _FIDELITY_HEADER, "tables": []}]):
+            p = FidelityParser("fake.pdf")
+            with p:
+                assert p.can_parse() is True
+
+    def test_rejects_non_fidelity(self):
+        with patch_pdf([{"text": _SCHWAB_HEADER, "tables": []}]):
+            p = FidelityParser("fake.pdf")
+            with p:
+                assert p.can_parse() is False
+
+    def test_transaction_parsing(self):
+        """5-column CMA layout: credits → positive, debits → negative."""
+        with patch_pdf([{"text": _FIDELITY_HEADER, "tables": [_FIDELITY_CMA_TABLE]}]):
+            p = FidelityParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.parser_used == "fidelity"
+        assert stmt.transaction_count == 4
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT"].amount == Decimal("3000.00")
+        assert by_desc["ATM DEBIT CARD PURCHASE"].amount == Decimal("-82.15")
+        assert by_desc["BILL PAYMENT ELECTRIC"].amount == Decimal("-130.00")
+        assert by_desc["INTEREST CREDITED"].amount == Decimal("1.55")
+
+    def test_line_fallback(self):
+        """Line-based parsing when no suitable table is found."""
+        with patch_pdf([{"text": _FIDELITY_LINE_TEXT, "tables": []}]):
+            p = FidelityParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        assert stmt.transaction_count == 3
+        by_desc = {tx.description: tx for tx in stmt.transactions}
+        assert by_desc["DIRECT DEPOSIT"].amount == Decimal("3000.00")
+        assert by_desc["BILL PAYMENT ELECTRIC"].amount == Decimal("-130.00")
+
+    def test_fit_ids_unique(self):
+        with patch_pdf([{"text": _FIDELITY_HEADER, "tables": [_FIDELITY_CMA_TABLE]}]):
+            p = FidelityParser("fake.pdf")
+            with p:
+                stmt = p.extract()
+
+        ids = [t.fit_id for t in stmt.transactions]
+        assert len(ids) == len(set(ids))
+
+
+# ── OFX exporter ─────────────────────────────────────────────────────────────
+
+from datetime import date as _date
+from src.models import ParsedStatement, BankAccount, Transaction, AccountType
+from src.exporter.ofx import to_ofx
+
+
+def _make_checking_statement(txns=None) -> ParsedStatement:
+    account = BankAccount(
+        bank_name="Test Bank",
+        account_id="1234",
+        routing_id="021000021",
+        account_type=AccountType.CHECKING,
+        statement_start=_date(2024, 1, 1),
+        statement_end=_date(2024, 1, 31),
+    )
+    if txns is None:
+        txns = [
+            Transaction(date=_date(2024, 1, 5), description="PAYROLL DEPOSIT", amount=Decimal("2500.00")),
+            Transaction(date=_date(2024, 1, 10), description="GROCERY STORE", amount=Decimal("-85.00")),
+        ]
+    stmt = ParsedStatement(account=account, transactions=txns, parser_used="test")
+    stmt.assign_fit_ids()
+    return stmt
+
+
+def _make_credit_card_statement(txns=None) -> ParsedStatement:
+    account = BankAccount(
+        bank_name="Test CC Bank",
+        account_id="9999",
+        account_type=AccountType.CREDIT,
+        statement_start=_date(2024, 1, 1),
+        statement_end=_date(2024, 1, 31),
+    )
+    if txns is None:
+        txns = [
+            Transaction(date=_date(2024, 1, 7), description="AMAZON.COM", amount=Decimal("-45.99")),
+            Transaction(date=_date(2024, 1, 15), description="PAYMENT THANK YOU", amount=Decimal("200.00")),
+        ]
+    stmt = ParsedStatement(account=account, transactions=txns, parser_used="test")
+    stmt.assign_fit_ids()
+    return stmt
+
+
+class TestOFXExporter:
+
+    def test_credit_card_envelope(self):
+        """Credit card accounts must use the CC-specific OFX tags."""
+        ofx = to_ofx(_make_credit_card_statement())
+        assert "CREDITCARDMSGSRSV1" in ofx
+        assert "CCSTMTRS" in ofx
+        assert "CCACCTFROM" in ofx
+        # Bank envelope tags must NOT appear for CC accounts
+        assert "BANKMSGSRSV1" not in ofx
+        assert "BANKACCTFROM" not in ofx
+
+    def test_checking_envelope(self):
+        """Checking accounts must use the standard bank OFX tags."""
+        ofx = to_ofx(_make_checking_statement())
+        assert "BANKMSGSRSV1" in ofx
+        assert "STMTRS" in ofx
+        assert "BANKACCTFROM" in ofx
+        # Credit-card envelope tags must NOT appear for checking accounts
+        assert "CREDITCARDMSGSRSV1" not in ofx
+        assert "CCSTMTRS" not in ofx
+        assert "CCACCTFROM" not in ofx
+
+    def test_trnuid_unique(self):
+        """Two sequential calls to to_ofx() with different statements should
+        produce output that is well-formed (TRNUID tag present in both)."""
+        stmt1 = _make_checking_statement()
+        stmt2 = _make_credit_card_statement()
+        ofx1 = to_ofx(stmt1)
+        ofx2 = to_ofx(stmt2)
+        # Both outputs must contain the TRNUID tag
+        assert "TRNUID" in ofx1
+        assert "TRNUID" in ofx2
+
+    @pytest.mark.xfail(reason="QFX FI block not yet implemented", strict=False)
+    def test_qfx_has_fi_block(self):
+        """QFX output (Quicken variant) should contain an FI block with
+        institution identifiers as required by Quicken for account matching.
+        This test is marked xfail until the QFX FI block is implemented."""
+        ofx = to_ofx(_make_checking_statement(), is_qfx=True)
+        assert "<FI>" in ofx
+        assert "<ORG>" in ofx

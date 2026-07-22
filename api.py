@@ -155,8 +155,29 @@ app.add_middleware(
 _MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "50")) * 1024 * 1024
 
 
+_PDF_MAGIC = b"%PDF-"
+
+
+def _validate_pdf_bytes(contents: bytes, filename: str) -> None:
+    """
+    Raise HTTP 400 if *contents* is not a valid PDF.
+
+    Checks:
+      1. File extension is .pdf (case-insensitive).
+      2. Magic bytes start with '%PDF-' — rejects renamed executables and
+         other files that could exploit pdfplumber's underlying parsers.
+    """
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    if not contents[:5] == _PDF_MAGIC:
+        raise HTTPException(
+            status_code=400,
+            detail="File does not appear to be a valid PDF (missing %PDF- header).",
+        )
+
+
 def _save_upload(contents: bytes) -> Path:
-    """Write uploaded bytes to a temp file and return its path."""
+    """Write validated PDF bytes to a temp file and return its path."""
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
     tmp.write(contents)
     tmp.close()
@@ -257,6 +278,14 @@ class ErrorReportRequest(BaseModel):
     api_key:     str = ""
 
 
+def _sanitize_report_field(value: str, max_len: int = 200) -> str:
+    """Strip HTML tags, normalise whitespace, and enforce a max length."""
+    import re as _re
+    cleaned = _re.sub(r"<[^>]+>", "", value)   # strip HTML
+    cleaned = " ".join(cleaned.split())          # collapse whitespace
+    return cleaned[:max_len]
+
+
 @app.post("/report-error", status_code=200)
 @limiter.limit("10/hour")
 def report_error(request: Request, body: ErrorReportRequest):
@@ -264,13 +293,19 @@ def report_error(request: Request, body: ErrorReportRequest):
     Accept a user-submitted parsing error report and forward it to support.
     No authentication required — we want to hear from free-tier users too.
     """
-    if len(body.description.strip()) < 10:
+    description = _sanitize_report_field(body.description, max_len=2000)
+    bank        = _sanitize_report_field(body.bank,        max_len=100)
+    email       = body.email.strip()[:254]
+
+    if len(description) < 10:
         raise HTTPException(status_code=422, detail="Please describe the issue (10+ characters).")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Invalid email address.")
 
     sent = send_parsing_error_report(
-        user_email=body.email.strip(),
-        bank=body.bank.strip(),
-        description=body.description.strip(),
+        user_email=email,
+        bank=bank,
+        description=description,
         api_key=body.api_key,
     )
     return {
@@ -377,10 +412,6 @@ async def convert(
         default=True,
         description="Add QBO category suggestions to transactions",
     ),
-    password:   Optional[str] = Query(
-        default=None,
-        description="Password to decrypt a password-protected PDF",
-    ),
     _auth:      dict = Depends(require_api_key),  # validates key + increments by 1
 ):
     """
@@ -388,9 +419,12 @@ async def convert(
 
     Requires a valid API key (``X-API-Key`` header).
     Counts as **1 conversion** against your monthly quota.
+
+    For password-protected PDFs send the password in the ``X-PDF-Password``
+    request header (not as a query parameter, to keep it out of server logs).
     """
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    # PDF password — read from header to keep it out of URL / server logs
+    password = request.headers.get("x-pdf-password") or None
 
     contents = await file.read()
     if len(contents) > _MAX_UPLOAD_BYTES:
@@ -398,6 +432,7 @@ async def convert(
             status_code=413,
             detail=f"File too large. Maximum size is {os.getenv('MAX_UPLOAD_MB', 50)} MB.",
         )
+    _validate_pdf_bytes(contents, file.filename or "")
 
     tmp_path = _save_upload(contents)
     try:
@@ -449,7 +484,6 @@ async def batch_convert(
     start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool             = Query(default=True),
-    password:   Optional[str]   = Query(default=None, description="Password applied to all PDFs"),
 ):
     """
     Upload multiple PDFs at once (e.g. 12 months of statements).
@@ -457,7 +491,13 @@ async def batch_convert(
     Each successfully parsed PDF counts as **1 conversion** against your quota.
     Transactions are merged, sorted, cross-statement duplicates removed, then
     exported as a single file.
+
+    For password-protected PDFs send the password in the ``X-PDF-Password``
+    request header (applied to all files in the batch).
     """
+    # PDF password — header only, never a URL query parameter
+    password = request.headers.get("x-pdf-password") or None
+
     # ── Auth: validate key + pre-check quota for the file count ───────────────
     api_key = request.headers.get("x-api-key", "").strip()
     if not api_key:
@@ -483,13 +523,17 @@ async def batch_convert(
     tmp_paths:    list[Path] = []
 
     for upload in files:
-        if not upload.filename or not upload.filename.lower().endswith(".pdf"):
-            all_warnings.append(f"Skipped non-PDF: {upload.filename}")
+        fname = upload.filename or ""
+        if not fname.lower().endswith(".pdf"):
+            all_warnings.append(f"Skipped non-PDF: {fname}")
             continue
 
         contents = await upload.read()
         if len(contents) > _MAX_UPLOAD_BYTES:
-            all_warnings.append(f"Skipped oversized file: {upload.filename}")
+            all_warnings.append(f"Skipped oversized file: {fname}")
+            continue
+        if not contents[:5] == _PDF_MAGIC:
+            all_warnings.append(f"Skipped invalid PDF (bad magic bytes): {fname}")
             continue
 
         tmp_path = _save_upload(contents)
@@ -498,9 +542,11 @@ async def batch_convert(
         try:
             stmt = detect_and_parse(tmp_path, password=password)
             statements.append(stmt)
-            all_warnings.extend([f"{upload.filename}: {w}" for w in stmt.warnings])
+            all_warnings.extend([f"{fname}: {w}" for w in stmt.warnings])
         except Exception as e:
-            all_warnings.append(f"Failed to parse {upload.filename}: {e}")
+            all_warnings.append(f"Failed to parse {fname}: {e}")
+        # Note: tmp_path cleanup is in the finally-like loop below;
+        # the path is already appended, so it will be cleaned regardless.
 
     for p in tmp_paths:
         p.unlink(missing_ok=True)
@@ -576,7 +622,6 @@ async def batch_preview(
     start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool             = Query(default=True, description="Add category suggestions"),
-    password:   Optional[str]   = Query(default=None, description="Password for all PDFs"),
 ):
     """
     Upload multiple PDFs and get a **single merged JSON** response with all
@@ -587,7 +632,10 @@ async def batch_preview(
     clean transaction list ready for the ReviewUI.
 
     Each successfully parsed PDF counts as **1 conversion** against quota.
+    For password-protected PDFs send the password in ``X-PDF-Password`` header.
     """
+    password = request.headers.get("x-pdf-password") or None
+
     # ── Auth: validate key + pre-check quota ─────────────────────────────────
     api_key = request.headers.get("x-api-key", "").strip()
     if not api_key:
@@ -611,21 +659,25 @@ async def batch_preview(
     tmp_paths:    list[Path] = []
 
     for upload in files:
-        if not upload.filename or not upload.filename.lower().endswith(".pdf"):
-            all_warnings.append(f"Skipped non-PDF: {upload.filename}")
+        fname = upload.filename or ""
+        if not fname.lower().endswith(".pdf"):
+            all_warnings.append(f"Skipped non-PDF: {fname}")
             continue
         contents = await upload.read()
         if len(contents) > _MAX_UPLOAD_BYTES:
-            all_warnings.append(f"Skipped oversized file: {upload.filename}")
+            all_warnings.append(f"Skipped oversized file: {fname}")
+            continue
+        if not contents[:5] == _PDF_MAGIC:
+            all_warnings.append(f"Skipped invalid PDF (bad magic bytes): {fname}")
             continue
         tmp_path = _save_upload(contents)
         tmp_paths.append(tmp_path)
         try:
             stmt = detect_and_parse(tmp_path, password=password)
             statements.append(stmt)
-            all_warnings.extend([f"{upload.filename}: {w}" for w in stmt.warnings])
+            all_warnings.extend([f"{fname}: {w}" for w in stmt.warnings])
         except Exception as e:
-            all_warnings.append(f"Failed to parse {upload.filename}: {e}")
+            all_warnings.append(f"Failed to parse {fname}: {e}")
 
     for p in tmp_paths:
         p.unlink(missing_ok=True)
@@ -663,7 +715,7 @@ async def batch_preview(
     return {
         "bank":              primary.bank_name,
         "account_id":        primary.account_id,
-        "account_type":      str(primary.account_type),
+        "account_type":      primary.account_type.value if hasattr(primary.account_type, "value") else str(primary.account_type),
         "statement_start":   str(merged_start),
         "statement_end":     str(merged_end),
         "file_count":        len(statements),
@@ -686,7 +738,6 @@ async def preview(
     start_date: Optional[str] = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str] = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool          = Query(default=True, description="Add category suggestions"),
-    password:   Optional[str] = Query(default=None, description="Password for encrypted PDF"),
     _auth:      dict          = Depends(require_api_key),
 ):
     """
@@ -694,11 +745,20 @@ async def preview(
     Used by the ReviewUI for previewing and editing before export.
 
     Counts as **1 conversion** against your monthly quota.
+    For password-protected PDFs send the password in ``X-PDF-Password`` header.
     """
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    password = request.headers.get("x-pdf-password") or None
 
     contents = await file.read()
+
+    # Size + magic-byte checks must happen BEFORE writing to disk
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {os.getenv('MAX_UPLOAD_MB', 50)} MB.",
+        )
+    _validate_pdf_bytes(contents, file.filename or "")
+
     tmp_path = _save_upload(contents)
 
     try:
@@ -717,7 +777,7 @@ async def preview(
     return {
         "bank":              statement.account.bank_name,
         "account_id":        statement.account.account_id,
-        "account_type":      str(statement.account.account_type),
+        "account_type":      statement.account.account_type.value if hasattr(statement.account.account_type, "value") else str(statement.account.account_type),
         "statement_start":   str(statement.account.statement_start),
         "statement_end":     str(statement.account.statement_end),
         "transaction_count": statement.transaction_count,

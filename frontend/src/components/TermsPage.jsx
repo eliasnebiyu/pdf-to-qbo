@@ -131,11 +131,22 @@ export default function TermsPage() {
           <P>We reserve the right to modify these Terms at any time. We will provide notice of material changes by updating the effective date above and, where appropriate, by emailing registered users. Continued use of the Service after changes constitutes acceptance of the updated Terms.</P>
         </Section>
 
-        <Section title="12. Governing Law">
+        <Section title="12. Data Processing — Accountants Acting as Processors">
+          <P>Many of our users are accountants, bookkeepers, and tax professionals who upload financial documents belonging to their clients. If you use the Service to process personal data on behalf of your clients, you are acting as a <strong style={{ color: C.white }}>data processor</strong> and your client is the data controller under applicable privacy laws (including GDPR and CCPA).</P>
+          <P>In this capacity you are responsible for:</P>
+          <Ul items={[
+            "Ensuring you have a lawful basis and your client's authorisation before uploading their documents",
+            "Maintaining your own data processing agreements with your clients as required by applicable law",
+            "Complying with applicable data protection regulations in your jurisdiction",
+          ]} />
+          <P>LedgerFlow acts as a sub-processor with respect to any client personal data transmitted through the Service. Our processing is limited to parsing the document and returning the result during the same request — we do not retain PDF contents or parsed transaction data. For a Data Processing Addendum (DPA), contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+        </Section>
+
+        <Section title="13. Governing Law">
           <P>These Terms are governed by the laws of the State of Delaware, United States, without regard to conflict of law principles. Any disputes shall be resolved in the courts of competent jurisdiction in Delaware.</P>
         </Section>
 
-        <Section title="13. Contact">
+        <Section title="14. Contact">
           <P>Questions about these Terms? Contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
       </div>

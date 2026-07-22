@@ -131,7 +131,7 @@ export default function PrivacyPage() {
           <P>We implement reasonable security measures including:</P>
           <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
             <li style={{ marginBottom: 6 }}>HTTPS/TLS encryption for all data in transit</li>
-            <li style={{ marginBottom: 6 }}>API keys stored as bcrypt hashes — not reversible</li>
+            <li style={{ marginBottom: 6 }}>API keys stored as SHA-256 hashes — the raw key is never persisted and is shown to you exactly once</li>
             <li style={{ marginBottom: 6 }}>No persistent storage of PDF contents or parsed transaction data</li>
             <li style={{ marginBottom: 6 }}>Rate limiting and abuse detection on all endpoints</li>
           </ul>

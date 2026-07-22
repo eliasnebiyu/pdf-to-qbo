@@ -17,6 +17,7 @@ in the chart of accounts; using the bank envelope will cause a mismatch and
 the import will fail or create a duplicate account.
 """
 from __future__ import annotations
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -57,12 +58,22 @@ def _escape(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _tx_block(tx: Transaction, index: int) -> str:
+def _tx_block(tx: Transaction, warnings: list[str]) -> str:
     """Render a single OFX <STMTTRN> block."""
-    fit_id  = tx.fit_id or tx.generate_fit_id(index)
+    # fit_id is always set by ParsedStatement.assign_fit_ids() before export
+    fit_id  = tx.fit_id or "UNKNOWN"
     tx_type = tx.tx_type or TransactionType.OTHER
-    name    = _escape(tx.description[:32])   # OFX NAME limit: 32 chars
-    memo    = _escape((tx.memo or tx.description)[:255])
+
+    # OFX NAME limit: 32 chars — warn if truncation occurs
+    full_name    = tx.description
+    name_escaped = _escape(full_name[:32])
+    if len(full_name) > 32:
+        warnings.append(
+            f"Transaction name truncated to 32 chars: '{full_name[:32]}' "
+            f"(full: '{full_name}')"
+        )
+
+    memo = _escape((tx.memo or tx.description)[:255])
 
     lines = [
         "<STMTTRN>",
@@ -70,7 +81,7 @@ def _tx_block(tx: Transaction, index: int) -> str:
         f"<DTPOSTED>{_dt(tx.date)}",
         f"<TRNAMT>{_amount(tx.amount)}",
         f"<FITID>{fit_id}",
-        f"<NAME>{name}",
+        f"<NAME>{name_escaped}",
         f"<MEMO>{memo}",
     ]
     if tx.check_num:
@@ -81,8 +92,12 @@ def _tx_block(tx: Transaction, index: int) -> str:
 
 def _is_credit_card(statement: ParsedStatement) -> bool:
     """Return True if this statement should use the credit-card OFX envelope."""
-    acct_type = statement.account.account_type or AccountType.CHECKING
-    return str(acct_type) == AccountType.CREDIT or acct_type == "CREDITLINE"
+    acct_type = statement.account.account_type
+    if acct_type is None:
+        return False
+    # AccountType uses str(Enum) — compare .value to avoid enum repr issues
+    val = acct_type.value if hasattr(acct_type, "value") else str(acct_type)
+    return val == AccountType.CREDIT.value   # "CREDITLINE"
 
 
 def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
@@ -92,6 +107,9 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     Checking / savings accounts use the standard bank envelope.
     Credit card accounts use CREDITCARDMSGSRSV1 / CCSTMTRS / CCACCTFROM
     as required by QBO for credit-card account types.
+
+    QFX variant adds the <FI> block required by Quicken so it can identify
+    the importing institution.  OFX omits that block.
 
     Args:
         statement: fully parsed bank statement
@@ -103,15 +121,20 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     acc  = statement.account
     txns = statement.transactions
 
+    # Unique TRNUID per export (OFX spec §2.7.2 — must be unique per response)
+    trnuid = str(uuid.uuid4()).replace("-", "")[:22]
+
     # Dates
     dt_start = _dt(acc.statement_start) if acc.statement_start else _dt(datetime.now())
     dt_end   = _dt(acc.statement_end)   if acc.statement_end   else _dt(datetime.now())
     dt_now   = datetime.now(timezone.utc).strftime("%Y%m%d120000")
 
-    # Build transaction list
-    tx_blocks = "\n".join(
-        _tx_block(tx, i) for i, tx in enumerate(txns)
-    )
+    # Build transaction list — collect name-truncation warnings
+    trunc_warnings: list[str] = []
+    tx_blocks = "\n".join(_tx_block(tx, trunc_warnings) for tx in txns)
+
+    # Propagate any truncation warnings back to the statement
+    statement.warnings.extend(trunc_warnings)
 
     # Closing balance
     ledger_bal = ""
@@ -123,6 +146,18 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
             f"</LEDGERBAL>"
         )
 
+    # QFX signon block includes the <FI> element so Quicken can identify the
+    # importing institution.  OFX does not include <FI>.
+    if is_qfx:
+        fi_block = (
+            "<FI>\n"
+            f"<ORG>{_escape(acc.bank_name)}\n"
+            "<FID>00000\n"       # FID 00000 = generic; Quicken accepts this
+            "</FI>\n"
+        )
+    else:
+        fi_block = ""
+
     signon = f"""\
 <SIGNONMSGSRSV1>
 <SONRS>
@@ -132,7 +167,7 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
 </STATUS>
 <DTSERVER>{dt_now}
 <LANGUAGE>ENG
-</SONRS>
+{fi_block}</SONRS>
 </SIGNONMSGSRSV1>"""
 
     banktranlist = f"""\
@@ -151,7 +186,7 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
 {signon}
 <CREDITCARDMSGSRSV1>
 <CCSTMTTRNRS>
-<TRNUID>1001
+<TRNUID>{trnuid}
 <STATUS>
 <CODE>0
 <SEVERITY>INFO
@@ -170,12 +205,15 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     else:
         # ── Bank / checking / savings envelope ───────────────────────────────
         acct_type = acc.account_type or AccountType.CHECKING
+        # BANKID should be the ABA routing number; fall back to bank name when
+        # the parser did not extract a routing number (common for file import).
+        bank_id = acc.routing_id or acc.bank_name
         body = f"""\
 <OFX>
 {signon}
 <BANKMSGSRSV1>
 <STMTTRNRS>
-<TRNUID>1001
+<TRNUID>{trnuid}
 <STATUS>
 <CODE>0
 <SEVERITY>INFO
@@ -183,7 +221,7 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
 <STMTRS>
 <CURDEF>{acc.currency}
 <BANKACCTFROM>
-<BANKID>{_escape(acc.routing_id or acc.bank_name)}
+<BANKID>{_escape(bank_id)}
 <ACCTID>{_escape(acc.account_id or "UNKNOWN")}
 <ACCTTYPE>{acct_type}
 </BANKACCTFROM>
