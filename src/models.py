@@ -28,10 +28,12 @@ class TransactionType(str, Enum):
 
 
 class AccountType(str, Enum):
-    CHECKING = "CHECKING"
-    SAVINGS  = "SAVINGS"
-    CREDIT   = "CREDITLINE"
-    MONEY    = "MONEYMRKT"
+    CHECKING   = "CHECKING"
+    SAVINGS    = "SAVINGS"
+    CREDIT     = "CREDITLINE"
+    MONEY      = "MONEYMRKT"
+    CD         = "CD"           # Certificate of Deposit (OFX 1.02 §11.3.2)
+    INVESTMENT = "INVESTMENT"   # Brokerage / investment account
 
 
 class Transaction(BaseModel):
@@ -148,7 +150,9 @@ class Transaction(BaseModel):
             + "|" + self.description.strip().lower()
         )
         digest = hashlib.sha256(canonical.encode()).hexdigest()[:16]
-        return f"{self.date.strftime('%Y%m%d')}-{digest}"
+        # OFX spec §3.2.3: FITID must be unique; we use date+hash, no separator,
+        # keeping it alphanumeric and within the 255-char limit.
+        return f"{self.date.strftime('%Y%m%d')}{digest}"
 
     class Config:
         use_enum_values = True

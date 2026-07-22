@@ -102,7 +102,9 @@ class USAAParser(BaseParser):
             balance = parse_amount(row[3]) if len(row) > 3 and row[3] else None
             if not desc or amount is None:
                 continue
-            if is_cc and amount > 0:
+            if is_cc:
+                # USAA CC statements show charges as positive — negate to
+                # produce OFX sign convention (charges negative, payments positive).
                 amount = -amount
             try:
                 txns.append(Transaction(date=parsed_date, description=desc,
@@ -125,7 +127,9 @@ class USAAParser(BaseParser):
             balance = parse_amount(m.group("balance")) if m.group("balance") else None
             if amount is None:
                 continue
-            if is_cc and amount > 0:
+            if is_cc:
+                # USAA CC statements show charges as positive — negate to
+                # produce OFX sign convention (charges negative, payments positive).
                 amount = -amount
             try:
                 txns.append(Transaction(date=parsed_date,

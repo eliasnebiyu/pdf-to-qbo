@@ -66,8 +66,8 @@ from src.auth import (
     PLANS,
     check_and_increment,
     create_api_key,
-    increment_usage,
     require_api_key,
+    revoke_key,
     validate_and_check_quota,
     verify_key_only,
 )
@@ -84,6 +84,24 @@ import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
+
+def _sentry_before_send(event: dict, hint: dict) -> dict:
+    """
+    Strip local-variable values from every exception frame before sending to Sentry.
+
+    send_default_pii=False does NOT suppress exception locals — they are
+    included in stack frames and may contain parsed financial data (transaction
+    amounts, bank account numbers, etc.).  This hook removes them entirely.
+    """
+    for exc_val in (event.get("exception") or {}).get("values") or []:
+        for frame in (exc_val.get("stacktrace") or {}).get("frames") or []:
+            frame.pop("vars", None)   # local variable bindings
+    # Also remove any user PII that might have been attached
+    if event.get("user"):
+        event["user"] = {}
+    return event
+
+
 _SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 if _SENTRY_DSN:
     sentry_sdk.init(
@@ -95,8 +113,8 @@ if _SENTRY_DSN:
             StarletteIntegration(transaction_style="endpoint"),
             FastApiIntegration(transaction_style="endpoint"),
         ],
-        # Don't send user emails to Sentry — keep it anonymous
         send_default_pii=False,
+        before_send=_sentry_before_send,
     )
 
 # ── Rate limiter ───────────────────────────────────────────────────────────────
@@ -108,7 +126,7 @@ def _rate_key(request: Request) -> str:
     return f"key:{key}" if key else f"ip:{get_remote_address(request)}"
 
 
-limiter = Limiter(key_func=_rate_key)
+limiter = Limiter(key_func=_rate_key, headers_enabled=True)
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -147,6 +165,10 @@ app.add_middleware(
         "X-Parser-Used",
         "X-Warnings",
         "Content-Disposition",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "Retry-After",
     ],
 )
 
@@ -231,7 +253,8 @@ def banks():
 # ── Auth: register  (public, rate-limited per IP) ─────────────────────────────
 
 class RegisterRequest(BaseModel):
-    email: str
+    email:        str
+    company_name: Optional[str] = None  # accountant / firm name (optional)
 
 
 @app.post("/auth/register", status_code=201)
@@ -280,9 +303,8 @@ class ErrorReportRequest(BaseModel):
 
 def _sanitize_report_field(value: str, max_len: int = 200) -> str:
     """Strip HTML tags, normalise whitespace, and enforce a max length."""
-    import re as _re
-    cleaned = _re.sub(r"<[^>]+>", "", value)   # strip HTML
-    cleaned = " ".join(cleaned.split())          # collapse whitespace
+    cleaned = re.sub(r"<[^>]+>", "", value)   # strip HTML
+    cleaned = " ".join(cleaned.split())         # collapse whitespace
     return cleaned[:max_len]
 
 
@@ -371,6 +393,42 @@ def checkout(
     return {"checkout_url": url, "plan": body.plan}
 
 
+# ── Auth: revoke key ─────────────────────────────────────────────────────────
+
+class RevokeRequest(BaseModel):
+    confirm: bool = False  # must be True to prevent accidental revocation
+
+
+@app.post("/auth/revoke", status_code=200)
+@limiter.limit("5/hour")
+def revoke(
+    request: Request,
+    body:    RevokeRequest,
+    record:  dict = Depends(verify_key_only),
+):
+    """
+    Permanently revoke the authenticated API key.
+
+    This action is irreversible — the key cannot be restored.
+    Set ``confirm: true`` in the request body to proceed.
+    Any active Stripe subscription must be cancelled separately via your
+    billing portal before revoking.
+
+    After revocation, register a new key at ``POST /auth/register``.
+    """
+    if not body.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail='Set "confirm": true to confirm key revocation. This action is permanent.',
+        )
+    api_key = request.headers.get("x-api-key", "").strip()
+    revoke_key(api_key)
+    return {
+        "revoked": True,
+        "message": "API key has been permanently revoked. Register a new key at POST /auth/register.",
+    }
+
+
 # ── Stripe webhook  (called by Stripe, not the frontend) ─────────────────────
 
 @app.post("/stripe/webhook", include_in_schema=False)
@@ -437,8 +495,15 @@ async def convert(
     tmp_path = _save_upload(contents)
     try:
         statement = detect_and_parse(tmp_path, password=password)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Could not parse the PDF. Check that it is a supported bank "
+                "statement and is not corrupted. If the problem persists, use "
+                "POST /report-error to send us a report."
+            ),
+        )
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -557,8 +622,9 @@ async def batch_convert(
             detail="No PDFs could be parsed. " + "; ".join(all_warnings),
         )
 
-    # Increment by the number of files we actually parsed
-    increment_usage(api_key, count=len(statements))
+    # Atomically re-check quota and increment for the files we actually parsed.
+    # This closes the TOCTOU race between the pre-check at the top and now.
+    check_and_increment(api_key, count=len(statements))
 
     # ── Merge + dedup ─────────────────────────────────────────────────────────
     warns: list[str] = []
@@ -688,8 +754,8 @@ async def batch_preview(
             detail="No PDFs could be parsed. " + "; ".join(all_warnings),
         )
 
-    # Charge quota
-    increment_usage(api_key, count=len(statements))
+    # Atomically re-check quota and increment for the files we actually parsed.
+    check_and_increment(api_key, count=len(statements))
 
     # ── Server-side merge + dedup ─────────────────────────────────────────────
     warns: list[str] = []
@@ -763,8 +829,15 @@ async def preview(
 
     try:
         statement = detect_and_parse(tmp_path, password=password)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Could not parse the PDF. Check that it is a supported bank "
+                "statement and is not corrupted. If the problem persists, use "
+                "POST /report-error to send us a report."
+            ),
+        )
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -843,8 +916,11 @@ async def export_transactions(
                 tx_type=tx_type,
                 category=tx.category,
             ))
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid transaction data: {e}")
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid transaction data. Check date formats (YYYY-MM-DD) and amounts.",
+        )
 
     try:
         acct_type = AccountType(req.account_type)
@@ -882,6 +958,30 @@ async def export_transactions(
         },
     )
 
+
+# ── /v1/ versioned API router ─────────────────────────────────────────────────
+# Mount all existing routes under /v1/ so Intuit-marketplace integrations and
+# partner integrations have a stable, version-tagged base URL.
+# The un-prefixed routes above remain for backwards compatibility.
+from fastapi import APIRouter as _APIRouter
+
+_v1 = _APIRouter(prefix="/v1")
+
+# Re-register all auth + conversion routes under /v1/
+_v1.add_api_route("/health",          health,              methods=["GET"])
+_v1.add_api_route("/banks",           banks,               methods=["GET"])
+_v1.add_api_route("/auth/register",   register,            methods=["POST"], status_code=201)
+_v1.add_api_route("/auth/usage",      usage,               methods=["GET"])
+_v1.add_api_route("/auth/checkout",   checkout,            methods=["POST"])
+_v1.add_api_route("/auth/revoke",     revoke,              methods=["POST"])
+_v1.add_api_route("/convert",         convert,             methods=["POST"])
+_v1.add_api_route("/preview",         preview,             methods=["POST"])
+_v1.add_api_route("/batch",           batch_convert,       methods=["POST"])
+_v1.add_api_route("/batch-preview",   batch_preview,       methods=["POST"])
+_v1.add_api_route("/export",          export_transactions, methods=["POST"])
+_v1.add_api_route("/report-error",    report_error,        methods=["POST"])
+
+app.include_router(_v1)
 
 # ── Frontend SPA (must come last — catch-all overwrites nothing registered above) ──
 

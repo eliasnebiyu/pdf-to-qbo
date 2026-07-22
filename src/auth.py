@@ -20,6 +20,7 @@ key skips quota checks entirely — useful for testing and seeding data.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import secrets
 import sqlite3
@@ -186,6 +187,27 @@ def cancel_by_subscription(subscription_id: str) -> None:
             (subscription_id,),
         )
 
+
+def revoke_key(raw_key: str) -> bool:
+    """
+    Permanently revoke an API key.
+
+    Sets the key's status to 'revoked' so all future requests with that key
+    will be rejected with 401.  Returns True if a row was updated, False if
+    the key did not exist.
+
+    This does NOT cancel any associated Stripe subscription — do that
+    separately via Stripe's API or dashboard before revoking the key.
+    """
+    _ensure_db()
+    key_hash = _hash_key(raw_key)
+    with _get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE api_keys SET status = 'revoked' WHERE key = ?",
+            (key_hash,),
+        )
+        return cur.rowcount > 0
+
 # ── Usage metering ─────────────────────────────────────────────────────────────
 
 def _maybe_reset_period(record: dict) -> dict:
@@ -209,12 +231,11 @@ def increment_usage(key: str, count: int = 1) -> None:
     """
     Increment usage counter by *count* with NO quota check.
 
-    *key* may be the raw API key (from an incoming request) or an already-
-    hashed key (from record["key"] returned by get_key_record).  We detect
-    this by checking the format: raw keys start with 'lf_'; everything else
-    is treated as an already-hashed value.
+    *key* must be the raw API key (prefix 'lf_').  It is always hashed
+    before the DB update — passing an already-hashed value is not supported
+    and will simply produce a hash-of-hash lookup that finds nothing.
     """
-    key_hash = key if not key.startswith("lf_") else _hash_key(key)
+    key_hash = _hash_key(key)
     with _get_conn() as conn:
         conn.execute(
             "UPDATE api_keys SET conversions_used = conversions_used + ? WHERE key = ?",
@@ -229,9 +250,9 @@ def validate_and_check_quota(key: str, count: int = 1) -> dict:
     Raises HTTPException (401 / 402 / 429) on failure.
     Returns the (possibly period-reset) record dict on success.
     """
-    # Admin bypass
+    # Admin bypass — timing-safe comparison prevents timing oracle attacks
     admin_key = os.getenv("ADMIN_API_KEY", "")
-    if admin_key and key == admin_key:
+    if admin_key and hmac.compare_digest(key, admin_key):
         return {
             "key": key, "email": "admin", "plan": "pro", "status": "active",
             "conversions_used": 0, "monthly_limit": None,
@@ -310,9 +331,19 @@ def verify_key_only(api_key: str = Security(_KEY_HEADER)) -> dict:
     """
     FastAPI dependency for info/checkout endpoints.
     Validates the key without touching the usage counter.
+    Supports the ADMIN_API_KEY bypass so admin can use all endpoints.
     """
     if not api_key:
         raise HTTPException(status_code=401, detail="API key required.")
+    # Admin bypass — timing-safe comparison
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if admin_key and hmac.compare_digest(api_key, admin_key):
+        return {
+            "key": api_key, "email": "admin", "plan": "pro", "status": "active",
+            "conversions_used": 0, "monthly_limit": None,
+            "period_start": date.today().isoformat(),
+            "stripe_customer_id": None, "stripe_subscription_id": None,
+        }
     _ensure_db()
     record = get_key_record(api_key)
     if not record:

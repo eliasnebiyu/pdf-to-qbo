@@ -26,10 +26,13 @@ Setup
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, Request
+
+log = logging.getLogger(__name__)
 
 from src.auth import (
     cancel_by_subscription,
@@ -133,7 +136,8 @@ async def handle_webhook(request: Request) -> dict:
     stripe  = _stripe()
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig, secret)
+        # tolerance=300: reject webhooks older than 5 minutes (replay protection)
+        event = stripe.Webhook.construct_event(payload, sig, secret, tolerance=300)
     except Exception:
         raise HTTPException(
             status_code=400,
@@ -178,9 +182,24 @@ def _on_checkout_completed(session: dict, stripe) -> None:
     try:
         sub      = stripe.Subscription.retrieve(subscription_id)
         price_id = sub["items"]["data"][0]["price"]["id"]
-        plan     = price_map.get(price_id, "starter")
-    except Exception:
-        plan = "starter"  # safe default
+        plan     = price_map.get(price_id)
+    except Exception as exc:
+        log.error(
+            "stripe webhook: failed to retrieve subscription %s: %s",
+            subscription_id, exc,
+        )
+        plan = None
+
+    if plan is None:
+        # Unknown price ID — do NOT silently assign a plan; log and bail out.
+        # This prevents a misconfigured env var from accidentally upgrading
+        # (or failing to upgrade) users to the wrong tier.
+        log.error(
+            "stripe webhook: unknown price_id for subscription %s; "
+            "check STRIPE_PRICE_STARTER / STRIPE_PRICE_PRO env vars",
+            subscription_id,
+        )
+        return
 
     update_plan(
         api_key,

@@ -556,10 +556,11 @@ export default function LandingPage() {
           <span style={{ color: C.muted, fontSize: 14 }}>
             <span style={{ color: C.accent, fontWeight: 800 }}>Ledger</span>Flow · Built for accountants
           </span>
-          <div style={{ display: "flex", gap: 24 }}>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
             {[
               ["Terms of Service", "/terms"],
               ["Privacy Policy", "/privacy"],
+              ["API Docs", "/docs"],
               ["support@ledgerflow.io", "mailto:support@ledgerflow.io"],
             ].map(([label, href]) => (
               <a key={label} href={href} style={{ color: C.muted, fontSize: 13, textDecoration: "none" }}>{label}</a>
@@ -570,6 +571,10 @@ export default function LandingPage() {
           <p style={{ color: C.muted, fontSize: 11, margin: 0, lineHeight: 1.6 }}>
             QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
             LedgerFlow exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks and other accounting software.
+          </p>
+          <p style={{ color: C.muted, fontSize: 11, margin: "8px 0 0", lineHeight: 1.6 }}>
+            Your API key is stored in your browser's <code>localStorage</code> for convenience. It never leaves your device to third parties.
+            You can clear it at any time in your browser settings. See our <a href="/privacy" style={{ color: C.muted }}>Privacy Policy</a> for details.
           </p>
         </div>
       </footer>

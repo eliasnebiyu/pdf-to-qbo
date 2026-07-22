@@ -28,7 +28,7 @@ function Ul({ items }) {
 
 export default function TermsPage() {
   const navigate = useNavigate();
-  const EFFECTIVE = "June 22, 2025";
+  const EFFECTIVE = "July 21, 2025";
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
@@ -82,6 +82,7 @@ export default function TermsPage() {
           ]} />
           <P>Paid plans are billed in advance on a monthly basis through Stripe. All fees are non-refundable except where required by applicable law. We reserve the right to change pricing with 30 days' notice to your registered email address.</P>
           <P>Cancelling your subscription will not trigger a refund for the current billing period. Your paid access continues until the end of the period you have paid for.</P>
+          <P><strong style={{ color: C.white }}>EU/UK Consumers:</strong> If you are a consumer located in the European Union or United Kingdom, you have the right to withdraw from a paid subscription within 14 days of purchase (the "cooling-off period") without giving any reason, provided you have not used any paid conversions during that period. To exercise this right, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> before the 14-day period expires. Once you have used the Service (e.g. processed a PDF), the right of withdrawal is lost in respect of the digital content consumed.</P>
         </Section>
 
         <Section title="5. Acceptable Use">
@@ -143,10 +144,17 @@ export default function TermsPage() {
         </Section>
 
         <Section title="13. Governing Law">
-          <P>These Terms are governed by the laws of the State of Delaware, United States, without regard to conflict of law principles. Any disputes shall be resolved in the courts of competent jurisdiction in Delaware.</P>
+          <P>These Terms are governed by the laws of the State of Delaware, United States, without regard to conflict of law principles.</P>
         </Section>
 
-        <Section title="14. Contact">
+        <Section title="14. Dispute Resolution and Arbitration">
+          <P><strong style={{ color: C.white }}>Binding Arbitration.</strong> Except for claims that qualify for small claims court, you and LedgerFlow agree to resolve any dispute, claim, or controversy arising out of or relating to these Terms or the Service through final and binding arbitration administered by JAMS under its Streamlined Arbitration Rules and Procedures. The arbitration shall take place in Delaware, USA, or by videoconference. The arbitrator's decision shall be final and binding and may be entered as a judgment in any court of competent jurisdiction.</P>
+          <P><strong style={{ color: C.white }}>Class Action Waiver.</strong> You and LedgerFlow each agree that any dispute resolution proceeding will be conducted only on an individual basis and not in a class, consolidated, or representative action. If for any reason a claim proceeds in court rather than in arbitration, you waive any right to a jury trial.</P>
+          <P><strong style={{ color: C.white }}>Opt-Out.</strong> You may opt out of this arbitration agreement by sending written notice to <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> within 30 days of first accepting these Terms. Your notice must include your name, email address, and a clear statement that you wish to opt out of arbitration.</P>
+          <P><strong style={{ color: C.white }}>EU/UK users:</strong> This arbitration clause does not apply to you to the extent it is inconsistent with mandatory consumer protection law in your jurisdiction.</P>
+        </Section>
+
+        <Section title="15. Contact">
           <P>Questions about these Terms? Contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
       </div>

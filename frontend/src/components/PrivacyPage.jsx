@@ -41,7 +41,7 @@ function Table({ rows }) {
 
 export default function PrivacyPage() {
   const navigate = useNavigate();
-  const EFFECTIVE = "June 22, 2025";
+  const EFFECTIVE = "July 21, 2025";
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "system-ui, -apple-system, sans-serif" }}>
@@ -88,6 +88,19 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}>Prevent fraud and abuse</li>
           </ul>
           <P>We do <strong style={{ color: C.white }}>not</strong> use your data for advertising, sell it to third parties, or use it to train machine learning models.</P>
+        </Section>
+
+        <Section title="2a. GDPR — Lawful Basis for Processing (EU/UK Users)">
+          <P>If you are located in the European Economic Area (EEA) or United Kingdom, we rely on the following lawful bases under Article 6 of the GDPR for each processing activity:</P>
+          <Table rows={[
+            ["Email address & API key", "Performance of a contract (Art. 6(1)(b)) — necessary to provide the Service you signed up for"],
+            ["Usage counters", "Legitimate interests (Art. 6(1)(f)) — enforcing fair usage and preventing abuse"],
+            ["IP address / rate-limiting data", "Legitimate interests (Art. 6(1)(f)) — security, fraud prevention, and service integrity"],
+            ["Error monitoring (Sentry)", "Legitimate interests (Art. 6(1)(f)) — diagnosing bugs and maintaining service reliability"],
+            ["PDF content (in-memory only)", "Performance of a contract (Art. 6(1)(b)) — processing your uploaded file is the core service"],
+            ["Billing data (via Stripe)", "Performance of a contract (Art. 6(1)(b)) — processing your payment for a paid subscription"],
+          ]} />
+          <P>Where we rely on legitimate interests, you have the right to object to that processing. To exercise this right, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
 
         <Section title="3. PDF Processing and AI Fallback">
@@ -164,20 +177,38 @@ export default function PrivacyPage() {
         <Section title="8. Cookies and Tracking">
           <P>LedgerFlow does not use advertising cookies or third-party tracking pixels. The Service uses:</P>
           <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
-            <li style={{ marginBottom: 6 }}>localStorage (browser) to store your API key and session draft — this data never leaves your device</li>
-            <li style={{ marginBottom: 6 }}>Product analytics (PostHog, if configured) to measure feature usage — anonymised, no PII</li>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>localStorage</strong> (browser) to store your API key and session draft — this data never leaves your device. By using the Service you acknowledge that these values are stored locally; you can clear them at any time via your browser's developer tools or settings.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>Error monitoring cookies</strong> set by Sentry for session replay (5% of sessions). Replay is fully masked — no text or transaction content is visible. You can opt out by contacting us.
+            </li>
           </ul>
+          <P>We do not use cookies for advertising, re-targeting, or cross-site tracking.</P>
         </Section>
 
         <Section title="9. Children's Privacy">
           <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
 
-        <Section title="10. Changes to This Policy">
+        <Section title="10. California Privacy Rights (CCPA / CPRA)">
+          <P>If you are a California resident, the California Consumer Privacy Act (CCPA) and California Privacy Rights Act (CPRA) grant you additional rights:</P>
+          <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Know:</strong> You may request a copy of the personal information we have collected about you in the past 12 months.</li>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Delete:</strong> You may request deletion of your personal information, subject to certain exceptions.</li>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Correct:</strong> You may request correction of inaccurate personal information we hold about you.</li>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Opt Out of Sale or Sharing:</strong> We do <em>not</em> sell, share, or disclose your personal information to third parties for cross-context behavioural advertising. There is nothing to opt out of, but you may confirm this in writing by emailing us.</li>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Non-Discrimination:</strong> We will not discriminate against you for exercising any of your CCPA rights.</li>
+          </ul>
+          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject line "California Privacy Request". We will respond within 45 days.</P>
+          <P><strong style={{ color: C.white }}>Categories of personal information collected:</strong> identifiers (email address, IP address), internet or other electronic network activity (usage counters, error events). We do not collect sensitive personal information as defined by the CPRA.</P>
+        </Section>
+
+        <Section title="12. Changes to This Policy">
           <P>We may update this Privacy Policy from time to time. We will notify you of material changes by updating the effective date and, where appropriate, by emailing registered users. Continued use of the Service after changes constitutes acceptance of the updated policy.</P>
         </Section>
 
-        <Section title="11. Contact">
+        <Section title="13. Contact">
           <P>Questions or concerns about this Privacy Policy?<br />
           Email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a></P>
         </Section>

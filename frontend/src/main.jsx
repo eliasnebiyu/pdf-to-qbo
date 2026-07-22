@@ -20,9 +20,19 @@ if (SENTRY_DSN) {
     tracesSampleRate:   import.meta.env.PROD ? 0.1 : 1.0,
     replaysSessionSampleRate:     0.05,  // record 5 % of sessions
     replaysOnErrorSampleRate:     1.0,   // always record on error
-    // Don't send PII
+    // Strip local-variable values from every exception frame to prevent
+    // parsed financial data (amounts, account numbers) from leaking to Sentry.
+    // send_default_pii=false does NOT suppress exception locals.
     beforeSend(event) {
-      if (event.user) delete event.user.email
+      const excValues = event?.exception?.values ?? []
+      for (const exc of excValues) {
+        const frames = exc?.stacktrace?.frames ?? []
+        for (const frame of frames) {
+          delete frame.vars  // local variable bindings
+        }
+      }
+      // Also clear any attached user PII
+      if (event.user) event.user = {}
       return event
     },
   })

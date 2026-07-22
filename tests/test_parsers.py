@@ -1251,11 +1251,12 @@ class TestUSAAParser:
                 stmt = p.extract()
 
         by_desc = {tx.description: tx for tx in stmt.transactions}
+        # USAA CC PDF shows charges as positive → OFX requires negatives
         assert by_desc["RESTAURANT CHARGE"].amount == Decimal("-28.50")
         assert by_desc["ONLINE SHOPPING"].amount == Decimal("-99.99")
-        # USAA CC mode only negates positive amounts (charges); payments already
-        # negative in the PDF are left as-is by the parser.
-        assert by_desc["PAYMENT RECEIVED"].amount == Decimal("-300.00")
+        # USAA CC PDF shows payments as negative (-300) → OFX requires positive
+        # (a payment reduces what you owe, so it's a credit = positive in OFX).
+        assert by_desc["PAYMENT RECEIVED"].amount == Decimal("300.00")
 
     def test_fit_ids_unique(self):
         with patch_pdf([{"text": _USAA_HEADER, "tables": [_USAA_TABLE]}]):
@@ -1669,11 +1670,9 @@ class TestOFXExporter:
         assert "TRNUID" in ofx1
         assert "TRNUID" in ofx2
 
-    @pytest.mark.xfail(reason="QFX FI block not yet implemented", strict=False)
     def test_qfx_has_fi_block(self):
-        """QFX output (Quicken variant) should contain an FI block with
-        institution identifiers as required by Quicken for account matching.
-        This test is marked xfail until the QFX FI block is implemented."""
+        """QFX output (Quicken variant) must contain an FI block with
+        institution identifiers as required by Quicken for account matching."""
         ofx = to_ofx(_make_checking_statement(), is_qfx=True)
         assert "<FI>" in ofx
         assert "<ORG>" in ofx
