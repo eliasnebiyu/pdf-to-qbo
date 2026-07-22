@@ -113,7 +113,7 @@ limiter = Limiter(key_func=_rate_key)
 # ── App ────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Parsify",
+    title="LedgerFlow",
     description="Convert bank statement PDFs to QuickBooks-compatible OFX/QFX/CSV",
     version="1.2.0",
 )
@@ -199,7 +199,7 @@ def _tx_to_dict(tx: Transaction) -> dict:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "parsify", "version": "1.2.0"}
+    return {"status": "ok", "service": "ledgerflow", "version": "1.2.0"}
 
 
 @app.get("/banks")

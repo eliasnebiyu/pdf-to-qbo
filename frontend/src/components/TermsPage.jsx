@@ -36,7 +36,7 @@ export default function TermsPage() {
       <nav style={{ borderBottom: `1px solid ${C.border}`, padding: "0 24px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", alignItems: "center", height: 60, gap: 16 }}>
           <button onClick={() => navigate("/")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 18, cursor: "pointer", letterSpacing: -0.5 }}>
-            <span style={{ color: C.accent }}>Par</span><span style={{ color: C.white }}>sify</span>
+            <span style={{ color: C.accent }}>Ledger</span><span style={{ color: C.white }}>Flow</span>
           </button>
           <span style={{ color: C.muted, fontSize: 14 }}>/ Terms of Service</span>
         </div>
@@ -48,19 +48,19 @@ export default function TermsPage() {
         <p style={{ color: C.muted, fontSize: 14, margin: "0 0 48px" }}>Effective date: {EFFECTIVE}</p>
 
         <Section title="1. Acceptance of Terms">
-          <P>By accessing or using Parsify ("Service", "we", "us"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</P>
-          <P>These Terms apply to all visitors, users, and others who access or use the Service. The Service is operated by Parsify ("Company").</P>
+          <P>By accessing or using LedgerFlow ("Service", "we", "us"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</P>
+          <P>These Terms apply to all visitors, users, and others who access or use the Service. The Service is operated by LedgerFlow ("Company").</P>
         </Section>
 
         <Section title="2. Description of Service">
-          <P>Parsify is a software-as-a-service tool that converts bank statement PDF files into QuickBooks-compatible transaction files (OFX, QFX, CSV). The Service provides:</P>
+          <P>LedgerFlow is a software-as-a-service tool that converts bank statement PDF files into QuickBooks-compatible transaction files (OFX, QFX, CSV). The Service provides:</P>
           <Ul items={[
             "Automated parsing of bank statement PDFs using rule-based and AI-assisted extraction",
             "An in-browser review interface for editing and reconciling transactions",
             "Export of reviewed transactions in standard accounting import formats",
             "A REST API for programmatic access",
           ]} />
-          <P>Parsify is a productivity tool. It is not a financial institution, accounting firm, or licensed financial advisor. We do not hold, transmit, or have access to your financial accounts.</P>
+          <P>LedgerFlow is a productivity tool. It is not a financial institution, accounting firm, or licensed financial advisor. We do not hold, transmit, or have access to your financial accounts.</P>
         </Section>
 
         <Section title="3. API Keys and Accounts">
@@ -68,7 +68,7 @@ export default function TermsPage() {
           <Ul items={[
             "Keeping your API key confidential",
             "All activity that occurs under your API key",
-            "Notifying us immediately at support@parsify.io if you believe your key has been compromised",
+            "Notifying us immediately at support@ledgerflow.io if you believe your key has been compromised",
           ]} />
           <P>We reserve the right to revoke any API key that we believe is being used in violation of these Terms.</P>
         </Section>
@@ -103,7 +103,7 @@ export default function TermsPage() {
         </Section>
 
         <Section title="7. Intellectual Property">
-          <P>The Service, including its software, design, and documentation, is owned by Parsify and protected by intellectual property laws. These Terms do not grant you any right, title, or interest in the Service beyond the limited right to use it as described herein.</P>
+          <P>The Service, including its software, design, and documentation, is owned by LedgerFlow and protected by intellectual property laws. These Terms do not grant you any right, title, or interest in the Service beyond the limited right to use it as described herein.</P>
           <P>You retain full ownership of any PDF files you upload and any transaction data you export.</P>
         </Section>
 
@@ -118,7 +118,7 @@ export default function TermsPage() {
         </Section>
 
         <Section title="9. Limitation of Liability">
-          <P>TO THE MAXIMUM EXTENT PERMITTED BY LAW, PARSIFY SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE.</P>
+          <P>TO THE MAXIMUM EXTENT PERMITTED BY LAW, LEDGERFLOW SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE.</P>
           <P>OUR TOTAL LIABILITY TO YOU FOR ANY CLAIMS UNDER THESE TERMS SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE 12 MONTHS PRECEDING THE CLAIM, OR $50, WHICHEVER IS GREATER.</P>
         </Section>
 
@@ -136,7 +136,7 @@ export default function TermsPage() {
         </Section>
 
         <Section title="13. Contact">
-          <P>Questions about these Terms? Contact us at <a href="mailto:support@parsify.io" style={{ color: C.accent }}>support@parsify.io</a>.</P>
+          <P>Questions about these Terms? Contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
       </div>
 

@@ -26,7 +26,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 // ─── API key storage ─────────────────────────────────────────────────────────
-const API_KEY_STORAGE = "parsify_api_key";
+const API_KEY_STORAGE = "ledgerflow_api_key";
 const getStoredKey  = () => localStorage.getItem(API_KEY_STORAGE) || "";
 const saveStoredKey = (k) => localStorage.setItem(API_KEY_STORAGE, k.trim());
 
@@ -1688,7 +1688,7 @@ function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
     <div className="onboarding">
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32, marginBottom: 6 }}>📄</div>
-        <div className="onboarding-title">Get started with Parsify</div>
+        <div className="onboarding-title">Get started with LedgerFlow</div>
         <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 16px" }}>
           Four steps to your first QuickBooks export
         </p>
@@ -1844,7 +1844,7 @@ export default function ReviewUI({
   }, [apiFetch]);
 
   // ── Session persistence (localStorage) ────────────────────────
-  const DRAFT_KEY = "parsify_draft_v1";
+  const DRAFT_KEY = "ledgerflow_draft_v1";
   const [draftBanner, setDraftBanner] = useState(false);
 
   // On mount: check for a saved draft (skip in demo mode)

@@ -49,7 +49,7 @@ export default function PrivacyPage() {
       <nav style={{ borderBottom: `1px solid ${C.border}`, padding: "0 24px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", alignItems: "center", height: 60, gap: 16 }}>
           <button onClick={() => navigate("/")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 18, cursor: "pointer", letterSpacing: -0.5 }}>
-            <span style={{ color: C.accent }}>Par</span><span style={{ color: C.white }}>sify</span>
+            <span style={{ color: C.accent }}>Ledger</span><span style={{ color: C.white }}>Flow</span>
           </button>
           <span style={{ color: C.muted, fontSize: 14 }}>/ Privacy Policy</span>
         </div>
@@ -61,7 +61,7 @@ export default function PrivacyPage() {
         <p style={{ color: C.muted, fontSize: 14, margin: "0 0 48px" }}>Effective date: {EFFECTIVE}</p>
 
         <Section title="Overview">
-          <P>Parsify is built for accountants and bookkeepers who handle sensitive financial documents. We take privacy seriously. This policy explains exactly what we collect, why, and how long we keep it.</P>
+          <P>LedgerFlow is built for accountants and bookkeepers who handle sensitive financial documents. We take privacy seriously. This policy explains exactly what we collect, why, and how long we keep it.</P>
           <P><strong style={{ color: C.white }}>Short version:</strong> We do not store the contents of your bank statement PDFs. We never sell your data. We never train AI models on your documents.</P>
         </Section>
 
@@ -135,7 +135,7 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}>No persistent storage of PDF contents or parsed transaction data</li>
             <li style={{ marginBottom: 6 }}>Rate limiting and abuse detection on all endpoints</li>
           </ul>
-          <P>No method of transmission over the internet is 100% secure. If you discover a security vulnerability, please disclose it responsibly to <a href="mailto:support@parsify.io" style={{ color: C.accent }}>support@parsify.io</a>.</P>
+          <P>No method of transmission over the internet is 100% secure. If you discover a security vulnerability, please disclose it responsibly to <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
 
         <Section title="6. Your Rights">
@@ -147,7 +147,7 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Port</strong> your data in a machine-readable format</li>
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Object</strong> to certain processing activities</li>
           </ul>
-          <P>To exercise any of these rights, email us at <a href="mailto:support@parsify.io" style={{ color: C.accent }}>support@parsify.io</a>. We will respond within 30 days.</P>
+          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>. We will respond within 30 days.</P>
         </Section>
 
         <Section title="7. Data Retention">
@@ -162,7 +162,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="8. Cookies and Tracking">
-          <P>Parsify does not use advertising cookies or third-party tracking pixels. The Service uses:</P>
+          <P>LedgerFlow does not use advertising cookies or third-party tracking pixels. The Service uses:</P>
           <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
             <li style={{ marginBottom: 6 }}>localStorage (browser) to store your API key and session draft — this data never leaves your device</li>
             <li style={{ marginBottom: 6 }}>Product analytics (PostHog, if configured) to measure feature usage — anonymised, no PII</li>
@@ -170,7 +170,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="9. Children's Privacy">
-          <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@parsify.io" style={{ color: C.accent }}>support@parsify.io</a>.</P>
+          <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
         </Section>
 
         <Section title="10. Changes to This Policy">
@@ -179,7 +179,7 @@ export default function PrivacyPage() {
 
         <Section title="11. Contact">
           <P>Questions or concerns about this Privacy Policy?<br />
-          Email us at <a href="mailto:support@parsify.io" style={{ color: C.accent }}>support@parsify.io</a></P>
+          Email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a></P>
         </Section>
       </div>
 

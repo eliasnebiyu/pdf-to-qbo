@@ -1,5 +1,5 @@
 {
-  "name": "parsify-frontend",
+  "name": "ledgerflow-frontend",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
