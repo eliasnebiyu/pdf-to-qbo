@@ -49,11 +49,12 @@ export default function TermsPage() {
 
         <Section title="1. Acceptance of Terms">
           <P>By accessing or using LedgerFlow ("Service", "we", "us"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</P>
-          <P>These Terms apply to all visitors, users, and others who access or use the Service. The Service is operated by LedgerFlow ("Company").</P>
+          <P>These Terms apply to all visitors, users, and others who access or use the Service. The Service is operated by <strong style={{ color: C.white }}>LedgerFlow Inc.</strong>, a corporation registered in the State of Delaware, United States (registered agent address: 651 N Broad St, Suite 201, Middletown, DE 19709). For all legal notices, please use the contact email in §15.</P>
         </Section>
 
         <Section title="2. Description of Service">
-          <P>LedgerFlow is a software-as-a-service tool that converts bank statement PDF files into QuickBooks-compatible transaction files (OFX, QFX, CSV). The Service provides:</P>
+          <P><em style={{ color: C.muted, fontSize: 13 }}>Trademark notice: QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc. OFX and QFX are open file formats compatible with QuickBooks and other accounting software.</em></P>
+          <P>LedgerFlow is a software-as-a-service tool that converts bank statement PDF files into open OFX/QFX/CSV formats that are compatible with QuickBooks and other accounting applications. The Service provides:</P>
           <Ul items={[
             "Automated parsing of bank statement PDFs using rule-based and AI-assisted extraction",
             "An in-browser review interface for editing and reconciling transactions",
@@ -61,6 +62,7 @@ export default function TermsPage() {
             "A REST API for programmatic access",
           ]} />
           <P>LedgerFlow is a productivity tool. It is not a financial institution, accounting firm, or licensed financial advisor. We do not hold, transmit, or have access to your financial accounts.</P>
+          <P><strong style={{ color: C.white }}>Service Level.</strong> We target 99.5% monthly uptime for the API and web UI. For current service status and maintenance announcements, contact <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> or check our status page when available. Planned maintenance is announced at least 24 hours in advance by email to registered users where possible. Scheduled maintenance windows are excluded from uptime calculations.</P>
         </Section>
 
         <Section title="3. API Keys and Accounts">
@@ -121,6 +123,7 @@ export default function TermsPage() {
         <Section title="9. Limitation of Liability">
           <P>TO THE MAXIMUM EXTENT PERMITTED BY LAW, LEDGERFLOW SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING OUT OF OR RELATED TO YOUR USE OF THE SERVICE.</P>
           <P>OUR TOTAL LIABILITY TO YOU FOR ANY CLAIMS UNDER THESE TERMS SHALL NOT EXCEED THE AMOUNT YOU PAID US IN THE 12 MONTHS PRECEDING THE CLAIM, OR $50, WHICHEVER IS GREATER.</P>
+          <P><strong style={{ color: C.white }}>Indemnification.</strong> You agree to defend, indemnify, and hold harmless LedgerFlow Inc. and its officers, directors, employees, and agents from and against any claims, liabilities, damages, judgments, awards, losses, costs, expenses, or fees (including reasonable attorneys' fees) arising out of or relating to: (a) your use of the Service in violation of these Terms; (b) your violation of any applicable law or regulation; (c) your violation of any third-party rights, including intellectual property rights; or (d) your upload of content you do not have the right to process. LedgerFlow reserves the right to assume exclusive control of the defense of any matter subject to indemnification by you, and you agree to cooperate with such defense.</P>
         </Section>
 
         <Section title="10. Termination">

@@ -207,11 +207,11 @@ class ParsedStatement(BaseModel):
         ──────────────────
         Two transactions with the same date, amount, and description (e.g.
         two identical $4.50 coffee purchases on the same day) would hash to
-        the same base ID.  We detect these and append a counter suffix so
-        every FITID in the statement is unique:
-            20240115-abc123def456abcd       ← first occurrence
-            20240115-abc123def456abcd-1     ← second occurrence
-            20240115-abc123def456abcd-2     ← third occurrence …
+        the same base ID.  We detect these and append an underscore + counter
+        (not a hyphen — OFX 1.02 §3.2.3 restricts FITIDs to alphanumeric):
+            20240115abc123def456abcd       ← first occurrence  (date + 16-char hex)
+            20240115abc123def456abcd_1     ← second occurrence (collision suffix)
+            20240115abc123def456abcd_2     ← third occurrence …
         """
         seen: dict[str, int] = {}
         for tx in self.transactions:
@@ -222,4 +222,6 @@ class ParsedStatement(BaseModel):
                 base  = tx.generate_fit_id()
                 count = seen.get(base, 0)
                 seen[base] = count + 1
-                tx.fit_id = f"{base}-{count}" if count else base
+                # OFX 1.02 §3.2.3: FITID must be unique and alphanumeric.
+                # Use underscore suffix (not hyphen) so the ID stays alphanumeric.
+                tx.fit_id = f"{base}_{count}" if count else base

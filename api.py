@@ -45,6 +45,7 @@ Deploy on Railway
   STRIPE_PRICE_PRO=price_...
   ADMIN_API_KEY=<long-random-secret>   (optional: bypasses all quotas)
 """
+import hashlib as _hashlib
 import os
 import re
 import tempfile
@@ -53,7 +54,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -62,12 +63,17 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from fastapi.security import APIKeyHeader as _APIKeyHeader
+
 from src.auth import (
     PLANS,
+    _KEY_HEADER as _AUTH_KEY_HEADER,
     check_and_increment,
     create_api_key,
+    log_conversion,
     require_api_key,
     revoke_key,
+    rotate_key,
     validate_and_check_quota,
     verify_key_only,
 )
@@ -130,10 +136,20 @@ limiter = Limiter(key_func=_rate_key, headers_enabled=True)
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
+_IS_PROD = os.getenv("ENVIRONMENT", "development").lower() in ("production", "prod")
+
 app = FastAPI(
     title="LedgerFlow",
-    description="Convert bank statement PDFs to QuickBooks-compatible OFX/QFX/CSV",
+    description=(
+        "Convert bank statement PDFs to OFX/QFX/CSV files compatible with "
+        "QuickBooks and other accounting software. "
+        "LedgerFlow is not affiliated with or endorsed by Intuit Inc."
+    ),
     version="1.2.0",
+    # Disable auto-generated API docs in production to prevent schema reconnaissance.
+    # Access /docs in development (ENVIRONMENT != production) only.
+    docs_url=None if _IS_PROD else "/docs",
+    redoc_url=None if _IS_PROD else "/redoc",
 )
 
 app.state.limiter = limiter
@@ -171,6 +187,52 @@ app.add_middleware(
         "Retry-After",
     ],
 )
+
+
+# ── Content-Security-Policy middleware ────────────────────────────────────────
+from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
+from starlette.requests import Request as _Request
+
+
+class _CSPMiddleware(_BaseHTTPMiddleware):
+    """Add Content-Security-Policy and other security headers to all responses."""
+    async def dispatch(self, request: _Request, call_next):
+        response = await call_next(request)
+        # Restrictive CSP: prevents XSS from financial data rendered in DOM.
+        # The SPA loads its own assets from 'self'; Sentry uses worker-src.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "   # Vite inline chunks
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' https://*.sentry.io https://api.stripe.com; "
+            "frame-src https://js.stripe.com; "
+            "worker-src blob:; "
+            "object-src 'none'; "
+            "base-uri 'self';"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
+app.add_middleware(_CSPMiddleware)
+
+# ── Auth dependency that returns the raw key string ─────────────────────────
+def _require_raw_api_key(api_key: str = Security(_AUTH_KEY_HEADER)) -> str:
+    """
+    FastAPI dependency: validates presence of X-API-Key header and returns the
+    raw key string.  Used by batch endpoints that need the raw key for quota
+    management while using the standard FastAPI Depends/Security pattern.
+    """
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key required. Include it as the X-API-Key header.",
+        )
+    return api_key
+
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -211,14 +273,23 @@ def _filter_by_date(
     start: Optional[str],
     end: Optional[str],
 ) -> list[Transaction]:
-    """Filter transactions to the given inclusive date range."""
+    """
+    Filter transactions to the given inclusive date range.
+
+    Raises HTTP 400 for dates that are not valid ISO-8601 (YYYY-MM-DD).
+    Silently ignoring bad dates would produce confusing empty result-sets;
+    an explicit error tells the caller exactly what went wrong.
+    """
     if not start and not end:
         return txns
     try:
         s = date_type.fromisoformat(start) if start else None
         e = date_type.fromisoformat(end)   if end   else None
-    except ValueError:
-        return txns
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format ({exc}). Use YYYY-MM-DD (e.g. 2024-01-31).",
+        )
     return [
         tx for tx in txns
         if (s is None or tx.date >= s) and (e is None or tx.date <= e)
@@ -298,7 +369,7 @@ class ErrorReportRequest(BaseModel):
     email:       str
     bank:        str = ""
     description: str
-    api_key:     str = ""
+    # api_key intentionally omitted — credentials must never appear in request bodies
 
 
 def _sanitize_report_field(value: str, max_len: int = 200) -> str:
@@ -324,15 +395,14 @@ def report_error(request: Request, body: ErrorReportRequest):
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise HTTPException(status_code=422, detail="Invalid email address.")
 
-    sent = send_parsing_error_report(
+    send_parsing_error_report(
         user_email=email,
         bank=bank,
         description=description,
-        api_key=body.api_key,
+        api_key="",  # never forward credentials to email
     )
     return {
         "received": True,
-        "emailed":  sent,
         "message":  "Thanks — we'll investigate and improve the parser.",
     }
 
@@ -346,6 +416,7 @@ def usage(request: Request, record: dict = Depends(verify_key_only)):
     plan_info = PLANS.get(record["plan"], PLANS["free"])
     limit     = plan_info["monthly_limit"]
     used      = record["conversions_used"]
+    days_into_period = (date_type.today() - date_type.fromisoformat(record["period_start"])).days
     return {
         "plan":                  record["plan"],
         "plan_label":            plan_info["label"],
@@ -353,8 +424,9 @@ def usage(request: Request, record: dict = Depends(verify_key_only)):
         "conversions_used":      used,
         "conversions_remaining": (limit - used) if limit is not None else None,
         "period_start":          record["period_start"],
+        "period_resets_in_days": max(0, 30 - days_into_period),
         "status":                record["status"],
-        "stripe_customer_id":    record.get("stripe_customer_id"),
+        # stripe_customer_id intentionally omitted — internal infrastructure ID
     }
 
 
@@ -383,12 +455,16 @@ def checkout(
     Requires ``STRIPE_SECRET_KEY``, ``STRIPE_PRICE_STARTER``, and
     ``STRIPE_PRICE_PRO`` environment variables to be configured.
     """
+    # Pass the raw key from the header (not the hash from the record)
+    # so billing.py can store an opaque session token against it.
+    raw_key = request.headers.get("x-api-key", "").strip()
     url = create_checkout_session(
-        api_key=record["key"],
+        raw_key=raw_key,
         email=record["email"],
         plan=body.plan,
         success_url=body.success_url,
         cancel_url=body.cancel_url,
+        allowed_origins=_allowed_origins,
     )
     return {"checkout_url": url, "plan": body.plan}
 
@@ -414,7 +490,9 @@ def revoke(
     Any active Stripe subscription must be cancelled separately via your
     billing portal before revoking.
 
-    After revocation, register a new key at ``POST /auth/register``.
+    After revocation, register a new key at ``POST /auth/register``,
+    or use ``POST /auth/rotate`` to atomically create a replacement key
+    that inherits your existing subscription.
     """
     if not body.confirm:
         raise HTTPException(
@@ -425,7 +503,40 @@ def revoke(
     revoke_key(api_key)
     return {
         "revoked": True,
-        "message": "API key has been permanently revoked. Register a new key at POST /auth/register.",
+        "message": (
+            "API key has been permanently revoked. "
+            "Register a new key at POST /auth/register."
+        ),
+    }
+
+
+# ── Auth: rotate key ──────────────────────────────────────────────────────────
+
+@app.post("/auth/rotate", status_code=200)
+@limiter.limit("3/hour")
+def rotate(
+    request: Request,
+    record:  dict = Depends(verify_key_only),
+):
+    """
+    Atomically rotate the authenticated API key.
+
+    Generates a new key, transfers the existing plan and Stripe subscription
+    to it, and immediately revokes the old key.  The new key is returned once
+    and never stored — save it securely.
+
+    Use this when a key is suspected compromised.  Unlike revoke + re-register,
+    rotation preserves your subscription and usage history.
+    """
+    api_key = request.headers.get("x-api-key", "").strip()
+    new_key = rotate_key(api_key)
+    return {
+        "api_key": new_key,
+        "plan":    record["plan"],
+        "message": (
+            "Old key revoked. Save this new key — it will not be shown again. "
+            "Your subscription and usage history have been transferred."
+        ),
     }
 
 
@@ -507,6 +618,12 @@ async def convert(
     finally:
         tmp_path.unlink(missing_ok=True)
 
+    # Audit-log every successful conversion (key hash, bank, parser, tx count)
+    raw_key = request.headers.get("x-api-key", "").strip()
+    log_conversion(raw_key, statement.account.bank_name, statement.parser_used,
+                   len(statement.transactions),
+                   file_hash=_hashlib.sha256(contents).hexdigest())
+
     statement.transactions = _filter_by_date(statement.transactions, start_date, end_date)
 
     if categorize:
@@ -549,6 +666,7 @@ async def batch_convert(
     start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool             = Query(default=True),
+    api_key:    str              = Depends(_require_raw_api_key),
 ):
     """
     Upload multiple PDFs at once (e.g. 12 months of statements).
@@ -563,25 +681,19 @@ async def batch_convert(
     # PDF password — header only, never a URL query parameter
     password = request.headers.get("x-pdf-password") or None
 
-    # ── Auth: validate key + pre-check quota for the file count ───────────────
-    api_key = request.headers.get("x-api-key", "").strip()
-    if not api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="API key required. Include it as the X-API-Key header.",
-        )
+    # Early count check before reading files into memory
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 files per batch.")
 
     pdf_count = sum(
         1 for f in files
         if f.filename and f.filename.lower().endswith(".pdf")
     )
-    # Pre-check (no increment yet) — ensures they can afford the whole batch
+    # Pre-check (no increment yet) — fast fail if quota already exhausted
     validate_and_check_quota(api_key, count=max(1, pdf_count))
 
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
-    if len(files) > 50:
-        raise HTTPException(status_code=400, detail="Maximum 50 files per batch.")
 
     statements:   list        = []
     all_warnings: list[str]  = []
@@ -608,8 +720,8 @@ async def batch_convert(
             stmt = detect_and_parse(tmp_path, password=password)
             statements.append(stmt)
             all_warnings.extend([f"{fname}: {w}" for w in stmt.warnings])
-        except Exception as e:
-            all_warnings.append(f"Failed to parse {fname}: {e}")
+        except Exception:
+            all_warnings.append(f"Failed to parse {fname}: could not extract transactions.")
         # Note: tmp_path cleanup is in the finally-like loop below;
         # the path is already appended, so it will be cleaned regardless.
 
@@ -625,6 +737,11 @@ async def batch_convert(
     # Atomically re-check quota and increment for the files we actually parsed.
     # This closes the TOCTOU race between the pre-check at the top and now.
     check_and_increment(api_key, count=len(statements))
+
+    # Audit-log the batch operation (one entry summarising all files parsed)
+    primary_bank = statements[0].account.bank_name if statements else "Unknown"
+    log_conversion(api_key, primary_bank, "batch",
+                   sum(len(s.transactions) for s in statements))
 
     # ── Merge + dedup ─────────────────────────────────────────────────────────
     warns: list[str] = []
@@ -688,6 +805,7 @@ async def batch_preview(
     start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
     categorize: bool             = Query(default=True, description="Add category suggestions"),
+    api_key:    str              = Depends(_require_raw_api_key),
 ):
     """
     Upload multiple PDFs and get a **single merged JSON** response with all
@@ -702,13 +820,10 @@ async def batch_preview(
     """
     password = request.headers.get("x-pdf-password") or None
 
-    # ── Auth: validate key + pre-check quota ─────────────────────────────────
-    api_key = request.headers.get("x-api-key", "").strip()
-    if not api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="API key required. Include it as the X-API-Key header.",
-        )
+    # Early count check before reading files into memory
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 files per batch.")
+
     pdf_count = sum(
         1 for f in files
         if f.filename and f.filename.lower().endswith(".pdf")
@@ -717,8 +832,6 @@ async def batch_preview(
 
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
-    if len(files) > 50:
-        raise HTTPException(status_code=400, detail="Maximum 50 files per batch.")
 
     statements:   list       = []
     all_warnings: list[str] = []
@@ -742,8 +855,9 @@ async def batch_preview(
             stmt = detect_and_parse(tmp_path, password=password)
             statements.append(stmt)
             all_warnings.extend([f"{fname}: {w}" for w in stmt.warnings])
-        except Exception as e:
-            all_warnings.append(f"Failed to parse {fname}: {e}")
+        except Exception:
+            # Generic message — never expose internal exception details in API responses.
+            all_warnings.append(f"Failed to parse {fname}: could not extract transactions.")
 
     for p in tmp_paths:
         p.unlink(missing_ok=True)
@@ -756,6 +870,11 @@ async def batch_preview(
 
     # Atomically re-check quota and increment for the files we actually parsed.
     check_and_increment(api_key, count=len(statements))
+
+    # Audit-log the batch-preview operation
+    preview_bank = statements[0].account.bank_name if statements else "Unknown"
+    log_conversion(api_key, preview_bank, "batch-preview",
+                   sum(len(s.transactions) for s in statements))
 
     # ── Server-side merge + dedup ─────────────────────────────────────────────
     warns: list[str] = []
@@ -840,6 +959,12 @@ async def preview(
         )
     finally:
         tmp_path.unlink(missing_ok=True)
+
+    # Audit-log every successful preview (same schema as /convert)
+    raw_key = request.headers.get("x-api-key", "").strip()
+    log_conversion(raw_key, statement.account.bank_name, statement.parser_used,
+                   len(statement.transactions),
+                   file_hash=_hashlib.sha256(contents).hexdigest())
 
     statement.transactions = _filter_by_date(statement.transactions, start_date, end_date)
 
@@ -974,6 +1099,7 @@ _v1.add_api_route("/auth/register",   register,            methods=["POST"], sta
 _v1.add_api_route("/auth/usage",      usage,               methods=["GET"])
 _v1.add_api_route("/auth/checkout",   checkout,            methods=["POST"])
 _v1.add_api_route("/auth/revoke",     revoke,              methods=["POST"])
+_v1.add_api_route("/auth/rotate",     rotate,              methods=["POST"])
 _v1.add_api_route("/convert",         convert,             methods=["POST"])
 _v1.add_api_route("/preview",         preview,             methods=["POST"])
 _v1.add_api_route("/batch",           batch_convert,       methods=["POST"])

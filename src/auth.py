@@ -69,6 +69,7 @@ def _ensure_db() -> None:
                 plan                   TEXT NOT NULL DEFAULT 'free',
                 stripe_customer_id     TEXT,
                 stripe_subscription_id TEXT,
+                stripe_session_token   TEXT,
                 status                 TEXT NOT NULL DEFAULT 'active',
                 conversions_used       INTEGER NOT NULL DEFAULT 0,
                 period_start           TEXT NOT NULL,
@@ -76,6 +77,22 @@ def _ensure_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_stripe_sub
                 ON api_keys (stripe_subscription_id);
+            CREATE INDEX IF NOT EXISTS idx_email
+                ON api_keys (email);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_session_token
+                ON api_keys (stripe_session_token)
+                WHERE stripe_session_token IS NOT NULL;
+            CREATE TABLE IF NOT EXISTS conversion_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_hash        TEXT NOT NULL,
+                timestamp       TEXT NOT NULL,
+                bank_name       TEXT,
+                parser_used     TEXT,
+                transaction_count INTEGER,
+                file_hash       TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_log_key
+                ON conversion_log (key_hash);
         """)
 
 
@@ -100,8 +117,27 @@ def create_api_key(email: str, plan: str = "free") -> str:
 
     The raw key is returned exactly once and is never written to persistent
     storage.  All subsequent lookups hash the incoming key before querying.
+
+    Raises HTTPException 409 if an active key already exists for this email.
     """
     _ensure_db()
+    email = email.lower().strip()
+    # Prevent duplicate registrations: check for existing active key
+    with _get_conn() as conn:
+        existing = conn.execute(
+            "SELECT key FROM api_keys WHERE email = ? AND status = 'active' LIMIT 1",
+            (email,),
+        ).fetchone()
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "An active API key already exists for this email address. "
+                    "Check your inbox for the original key, or contact support@ledgerflow.io "
+                    "to rotate your key."
+                ),
+            )
+
     raw_key  = "lf_" + secrets.token_hex(24)   # 51-char key
     key_hash = _hash_key(raw_key)
     now      = datetime.now(timezone.utc)
@@ -110,7 +146,7 @@ def create_api_key(email: str, plan: str = "free") -> str:
             """INSERT INTO api_keys
                (key, email, plan, status, conversions_used, period_start, created_at)
                VALUES (?, ?, ?, 'active', 0, ?, ?)""",
-            (key_hash, email.lower().strip(), plan,
+            (key_hash, email, plan,
              now.date().isoformat(), now.isoformat()),
         )
     return raw_key
@@ -188,6 +224,73 @@ def cancel_by_subscription(subscription_id: str) -> None:
         )
 
 
+def store_session_token(raw_key: str, token: str) -> None:
+    """
+    Associate a Stripe checkout session token with an API key.
+
+    The token (an opaque random UUID) is stored in Stripe session metadata
+    instead of the key hash, so no credential-derived value reaches Stripe.
+    """
+    _ensure_db()
+    key_hash = _hash_key(raw_key)
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE api_keys SET stripe_session_token = ? WHERE key = ?",
+            (token, key_hash),
+        )
+
+
+def get_key_hash_for_session(token: str) -> Optional[str]:
+    """Return the key hash associated with a Stripe session token, or None."""
+    _ensure_db()
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT key FROM api_keys WHERE stripe_session_token = ?", (token,)
+        ).fetchone()
+        return row["key"] if row else None
+
+
+def rotate_key(raw_key: str) -> str:
+    """
+    Atomically generate a new API key and revoke the old one.
+
+    All subscription data (plan, Stripe IDs, usage) is transferred to the
+    new key.  The old key is immediately marked 'revoked'.
+
+    Returns the new raw key (shown once; never stored).
+    """
+    _ensure_db()
+    old_hash = _hash_key(raw_key)
+    with _get_conn() as conn:
+        old = conn.execute(
+            "SELECT * FROM api_keys WHERE key = ?", (old_hash,)
+        ).fetchone()
+        if not old:
+            raise HTTPException(status_code=401, detail="Invalid API key.")
+        if old["status"] == "revoked":
+            raise HTTPException(status_code=401, detail="API key is already revoked.")
+
+        new_raw  = "lf_" + secrets.token_hex(24)
+        new_hash = _hash_key(new_raw)
+        now      = datetime.now(timezone.utc).isoformat()
+
+        # Insert new key with the same plan and Stripe subscription
+        conn.execute(
+            """INSERT INTO api_keys
+               (key, email, plan, stripe_customer_id, stripe_subscription_id,
+                status, conversions_used, period_start, created_at)
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
+            (new_hash, old["email"], old["plan"],
+             old["stripe_customer_id"], old["stripe_subscription_id"],
+             old["conversions_used"], old["period_start"], now),
+        )
+        # Revoke the old key
+        conn.execute(
+            "UPDATE api_keys SET status = 'revoked' WHERE key = ?", (old_hash,)
+        )
+    return new_raw
+
+
 def revoke_key(raw_key: str) -> bool:
     """
     Permanently revoke an API key.
@@ -207,6 +310,32 @@ def revoke_key(raw_key: str) -> bool:
             (key_hash,),
         )
         return cur.rowcount > 0
+
+def log_conversion(
+    raw_key: str,
+    bank_name: str = "",
+    parser_used: str = "",
+    transaction_count: int = 0,
+    file_hash: str = "",
+) -> None:
+    """
+    Write an audit record for a completed conversion.
+
+    Stores: key hash, timestamp, bank name, parser, transaction count, and
+    a hash of the PDF (not the content) for provenance.  Never stores PDF
+    contents or parsed financial data.
+    """
+    _ensure_db()
+    key_hash = _hash_key(raw_key)
+    now      = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """INSERT INTO conversion_log
+               (key_hash, timestamp, bank_name, parser_used, transaction_count, file_hash)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (key_hash, now, bank_name, parser_used, transaction_count, file_hash),
+        )
+
 
 # ── Usage metering ─────────────────────────────────────────────────────────────
 
@@ -281,14 +410,20 @@ def validate_and_check_quota(key: str, count: int = 1) -> dict:
     if limit is not None:
         remaining = limit - record["conversions_used"]
         if count > remaining:
+            # 402 Payment Required (not 429) — this is a billing/entitlement limit,
+            # not a rate limit. Using 429 causes API clients and Zapier to retry
+            # indefinitely, wasting resources.
+            days_left = 30 - (date.today() - date.fromisoformat(record["period_start"])).days
             raise HTTPException(
-                status_code=429,
+                status_code=402,
                 detail=(
                     f"Monthly quota exceeded. "
                     f"You have {remaining} conversion(s) remaining on the "
                     f"{plan_info['label']} plan ({limit}/month). "
+                    f"Quota resets in approximately {max(0, days_left)} day(s). "
                     "Upgrade your plan at POST /auth/checkout."
                 ),
+                headers={"Retry-After": str(max(0, days_left) * 86400)},
             )
     return record
 
@@ -348,4 +483,12 @@ def verify_key_only(api_key: str = Security(_KEY_HEADER)) -> dict:
     record = get_key_record(api_key)
     if not record:
         raise HTTPException(status_code=401, detail="Invalid API key.")
+    if record["status"] not in ("active",):
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"API key is {record['status']}. "
+                "Check your subscription or register a new key at POST /auth/register."
+            ),
+        )
     return _maybe_reset_period(record)

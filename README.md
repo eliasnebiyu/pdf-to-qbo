@@ -77,7 +77,7 @@ All conversion endpoints require an `X-API-Key` header. Get a free key at the we
 curl -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com"}'
-# → {"api_key": "sk-...", ...}
+# → {"api_key": "lf_...", ...}
 ```
 
 ### Subscription Tiers
@@ -97,14 +97,19 @@ Upgrade via the web UI or `POST /auth/checkout` → redirects to Stripe Checkout
 | GET | `/health` | — | Health check |
 | GET | `/banks` | — | List supported banks |
 | POST | `/auth/register` | — | Register and get a free API key |
+| POST | `/report-error` | — | Submit a parsing error report |
 | GET | `/auth/usage` | Key | Current quota usage |
 | POST | `/auth/checkout` | Key | Start Stripe Checkout for upgrade |
+| POST | `/auth/revoke` | Key | Permanently revoke the current key |
+| POST | `/auth/rotate` | Key | Atomically rotate key (transfer subscription) |
 | POST | `/preview` | Key + quota | Upload PDF → JSON transaction list |
 | POST | `/convert` | Key + quota | Upload PDF → download OFX/QFX/CSV |
 | POST | `/batch` | Key + quota | Upload multiple PDFs → merged download |
 | POST | `/batch-preview` | Key + quota | Upload multiple PDFs → merged JSON |
 | POST | `/export` | Key | JSON transaction list → file download |
 | POST | `/stripe/webhook` | Stripe sig | Stripe event handler |
+
+All endpoints are also available under the `/v1/` prefix (e.g. `/v1/convert`) for integrations that require a stable versioned base URL.
 
 ### Example — preview a statement
 
@@ -138,13 +143,18 @@ curl -X POST "http://localhost:8000/convert?format=ofx" \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `sqlite:///./ledgerflow.db` | Database connection string |
+| `DB_PATH` | `ledgerflow.db` | SQLite database file path |
 | `STRIPE_SECRET_KEY` | — | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
-| `STRIPE_STARTER_PRICE_ID` | — | Stripe price ID for Starter plan |
-| `STRIPE_PRO_PRICE_ID` | — | Stripe price ID for Pro plan |
-| `ALLOWED_ORIGINS` | `*` | CORS allowed origins (comma-separated) |
-| `OPENAI_API_KEY` | — | Required only for LLM parser fallback |
+| `STRIPE_PRICE_STARTER` | — | Stripe price ID for Starter plan |
+| `STRIPE_PRICE_PRO` | — | Stripe price ID for Pro plan |
+| `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:4173,http://localhost:3000` | CORS allowed origins (comma-separated) |
+| `ANTHROPIC_API_KEY` | — | Required only for LLM parser fallback |
+| `RESEND_API_KEY` | — | Transactional email delivery (API key emails) |
+| `SENTRY_DSN` | — | Sentry error tracking DSN |
+| `ADMIN_API_KEY` | — | Bypass all quotas (internal use only) |
+| `ENVIRONMENT` | `development` | Set to `production` to disable Swagger UI |
+| `MAX_UPLOAD_MB` | `50` | Maximum PDF upload size in megabytes |
 
 Copy `.env.example` to `.env` and fill in values before running.
 

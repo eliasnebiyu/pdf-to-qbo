@@ -20,6 +20,35 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
+// ─── Focus trap hook (WCAG 2.1 AA — modal dialogs must trap focus) ─────────────
+function useFocusTrap(active = true) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    const el = ref.current;
+    const FOCUSABLE = 'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
+    const focusable = () => [...el.querySelectorAll(FOCUSABLE)];
+    // Focus the first focusable element when the modal opens
+    const first = focusable()[0];
+    if (first) first.focus();
+    function onKeyDown(e) {
+      if (e.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) { e.preventDefault(); return; }
+      const last = items[items.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === items[0]) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); items[0].focus(); }
+      }
+    }
+    function onEscape(e) { /* parent modals handle Escape via onClose */ }
+    el.addEventListener("keydown", onKeyDown);
+    return () => el.removeEventListener("keydown", onKeyDown);
+  }, [active]);
+  return ref;
+}
+
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.js",
   import.meta.url,
@@ -887,6 +916,17 @@ const css = `
     .btn { font-size: 12px; padding: 5px 10px; }
     .topbar-file { max-width: 160px; }
 
+    /* Collapse side-by-side layout on tablets (iPad landscape) so each
+       pane has full width rather than ~450px of cramped content.
+       The pane-tabs switcher is made visible at 768px; between 769–1024px
+       we keep both panes single-column and let the tab bar show. */
+    .main-layout {
+      grid-template-columns: 1fr;
+    }
+    .pane-tabs { display: flex; }
+    .pdf-pane.pane-hidden,
+    .table-pane.pane-hidden { display: none; }
+
     /* Status bar: make it horizontally scrollable */
     .status-bar {
       overflow-x: auto;
@@ -1148,7 +1188,7 @@ const DEMO_TRANSACTIONS = [
 ].map(tx => ({ ...tx, id: uid(), amount: String(tx.amount), balance: String(tx.balance), _demo: true }));
 
 const buildOFXFields = (tx) => {
-  const dtposted = (tx.date || "").replace(/-/g, "") + "120000[0:UTC]";
+  const dtposted = (tx.date || "").replace(/-/g, "") + "120000[+0:GMT]";
   const amount   = parseFloat(tx.amount || 0).toFixed(2);
   const fitId    = tx.fit_id || `${(tx.date || "").replace(/-/g, "")}-pending`;
   return [
@@ -1233,6 +1273,7 @@ function AddRowForm({ onAdd }) {
 
 // ── Split Transaction Modal ───────────────────────────────────────────────────
 function SplitModal({ tx, onSplit, onClose }) {
+  const trapRef = useFocusTrap(true);
   const total  = parseFloat(tx.amount || 0);
   const isNeg  = total < 0;
   const [amt1,  setAmt1]  = useState((total / 2).toFixed(2));
@@ -1255,9 +1296,10 @@ function SplitModal({ tx, onSplit, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-title">Split Transaction</div>
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div className="modal" ref={trapRef} onClick={e => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-labelledby="split-modal-title">
+        <div className="modal-title" id="split-modal-title">Split Transaction</div>
         <div className="modal-sub">
           Original: {fmt(Math.abs(total))} {isNeg ? "(debit)" : "(credit)"}
         </div>
@@ -1329,6 +1371,7 @@ function SplitModal({ tx, onSplit, onClose }) {
 
 // ── Export Modal ──────────────────────────────────────────────────────────────
 function ExportModal({ transactions, meta, onClose }) {
+  const trapRef = useFocusTrap(true);
   const [exportFmt,  setExportFmt]  = useState("ofx");
   const [exporting,  setExporting]  = useState(false);
   const [error,      setError]      = useState(null);
@@ -1377,18 +1420,25 @@ function ExportModal({ transactions, meta, onClose }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-title">Export to QuickBooks</div>
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div
+        ref={trapRef}
+        className="modal"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-modal-title"
+      >
+        <div className="modal-title" id="export-modal-title">Download &amp; Export</div>
         <div className="modal-sub">
           {active.length} transactions · {active.filter(t => flagReasons(t).length === 0).length} clean
           {meta?.account_type && ` · ${meta.account_type}`}
         </div>
         <div className="format-grid">
           {[
-            { id: "ofx",  name: "OFX",  desc: "Direct QBO import" },
+            { id: "ofx",  name: "OFX",  desc: "QuickBooks-compatible" },
             { id: "qfx",  name: "QFX",  desc: "Quicken format" },
-            { id: "csv",  name: "CSV",  desc: "Manual import" },
+            { id: "csv",  name: "CSV",  desc: "Spreadsheet import" },
           ].map(f => (
             <div key={f.id} className={`format-card ${exportFmt === f.id ? "selected" : ""}`}
               onClick={() => setExportFmt(f.id)}>
@@ -1408,6 +1458,10 @@ function ExportModal({ transactions, meta, onClose }) {
             {exporting ? "Exporting…" : `Download ${exportFmt.toUpperCase()}`}
           </button>
         </div>
+        <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
+          QuickBooks® is a registered trademark of Intuit Inc.
+          LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+        </p>
       </div>
     </div>
   );
@@ -1415,6 +1469,7 @@ function ExportModal({ transactions, meta, onClose }) {
 
 // ── API Key Modal ─────────────────────────────────────────────────────────────
 function ApiKeyModal({ onSave }) {
+  const trapRef = useFocusTrap(true);
   const [tab,         setTab]        = useState("register");
   const [email,       setEmail]      = useState("");
   const [busy,        setBusy]       = useState(false);
@@ -1452,8 +1507,8 @@ function ApiKeyModal({ onSave }) {
 
   const handlePasteSave = () => {
     if (!existingVal.trim()) return;
-    if (!existingVal.trim().startsWith("qbo_")) {
-      setPasteError("Keys start with qbo_ — double-check and try again.");
+    if (!existingVal.trim().startsWith("lf_")) {
+      setPasteError("Keys start with lf_ — double-check and try again.");
       return;
     }
     onSave(existingVal);
@@ -1462,9 +1517,9 @@ function ApiKeyModal({ onSave }) {
   // ── Success screen ────────────────────────────────────────────────────────
   if (newKey) {
     return (
-      <div className="key-overlay">
-        <div className="key-modal">
-          <h2>🎉 You're all set!</h2>
+      <div className="key-overlay" role="presentation">
+        <div ref={trapRef} className="key-modal" role="dialog" aria-modal="true" aria-labelledby="key-success-title">
+          <h2 id="key-success-title">🎉 You're all set!</h2>
           <p>
             Your free API key is ready. <strong>Save it somewhere safe</strong> —
             we can't show it again after you close this window.
@@ -1496,9 +1551,9 @@ function ApiKeyModal({ onSave }) {
 
   // ── Main modal ────────────────────────────────────────────────────────────
   return (
-    <div className="key-overlay">
-      <div className="key-modal">
-        <h2>🔑 API key required</h2>
+    <div className="key-overlay" role="presentation">
+      <div ref={trapRef} className="key-modal" role="dialog" aria-modal="true" aria-labelledby="key-modal-title">
+        <h2 id="key-modal-title">🔑 API key required</h2>
         <p>All PDF conversions require an API key. Choose an option below.</p>
 
         {/* Tabs */}
@@ -1566,7 +1621,7 @@ function ApiKeyModal({ onSave }) {
           <>
             <input
               className="key-input"
-              placeholder="qbo_…"
+              placeholder="lf_…"
               value={existingVal}
               onChange={e => { setExistingVal(e.target.value); setPasteError(null); }}
               onKeyDown={e => e.key === "Enter" && handlePasteSave()}
@@ -1598,10 +1653,11 @@ function ApiKeyModal({ onSave }) {
 
 // ─── Upgrade modal ────────────────────────────────────────────────────────────
 function UpgradeModal({ onClose, onCheckout, busy, error }) {
+  const trapRef = useFocusTrap(true);
   return (
-    <div className="key-overlay">
-      <div className="upgrade-modal">
-        <h2>🚀 Upgrade your plan</h2>
+    <div className="key-overlay" role="presentation">
+      <div ref={trapRef} className="upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
+        <h2 id="upgrade-modal-title">🚀 Upgrade your plan</h2>
         <p>
           You've hit your monthly limit. Upgrade to keep converting —
           no interruptions, instant activation.
@@ -1676,8 +1732,8 @@ function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
       done: false,
     },
     {
-      title: "Export to QuickBooks",
-      sub: "Download OFX or QFX and import into QuickBooks Online in two clicks.",
+      title: "Download & Import",
+      sub: "Download OFX or QFX and import into QuickBooks Online or your accounting software.",
       done: false,
     },
   ];
@@ -1690,7 +1746,7 @@ function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
         <div style={{ fontSize: 32, marginBottom: 6 }}>📄</div>
         <div className="onboarding-title">Get started with LedgerFlow</div>
         <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 16px" }}>
-          Four steps to your first QuickBooks export
+          Four steps to your first export
         </p>
       </div>
       {steps.map((step, i) => {
@@ -1790,7 +1846,7 @@ export default function ReviewUI({
           email:       reportEmail || "anonymous",
           bank:        pdfName || "",
           description: reportDesc,
-          api_key:     apiKey || "",
+          // api_key intentionally omitted — credentials must never appear in request bodies
         }),
       });
       setReportSubmitted(true);
@@ -1847,13 +1903,22 @@ export default function ReviewUI({
   const DRAFT_KEY = "ledgerflow_draft_v1";
   const [draftBanner, setDraftBanner] = useState(false);
 
-  // On mount: check for a saved draft (skip in demo mode)
+  // On mount: check for a saved draft (skip in demo mode).
+  // Discard drafts older than 24 hours — stale financial data should not
+  // auto-restore; a fresh upload is safer and avoids confusing the user.
+  const DRAFT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
   useEffect(() => {
     if (isDemo) return;
     try {
       const saved = localStorage.getItem(DRAFT_KEY);
       if (saved) {
-        const { transactions: savedTxns, meta: savedMeta, pdfName: savedName } = JSON.parse(saved);
+        const { transactions: savedTxns, meta: savedMeta, pdfName: savedName, savedAt } = JSON.parse(saved);
+        // Enforce TTL: discard if savedAt is absent (pre-TTL data) OR >24 h old.
+        // "if (savedAt && ...)" would silently skip TTL for old data — wrong.
+        if (!savedAt || Date.now() - new Date(savedAt).getTime() > DRAFT_TTL_MS) {
+          localStorage.removeItem(DRAFT_KEY);
+          return;
+        }
         if (savedTxns?.length > 0) {
           setDraftBanner({ txns: savedTxns, meta: savedMeta, name: savedName });
         }
@@ -2003,7 +2068,7 @@ export default function ReviewUI({
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Failed to parse PDF" }));
         if (res.status === 401) { setShowKeyModal(true); throw new Error("Invalid or missing API key."); }
-        if (res.status === 429) { setQuotaExceeded(true); throw new Error("quota"); }
+        if (res.status === 402 || res.status === 429) { setQuotaExceeded(true); throw new Error("quota"); }
         throw new Error(err.detail || "Failed to parse PDF");
       }
       const data = await res.json();
@@ -2054,7 +2119,7 @@ export default function ReviewUI({
         const res = await apiFetch("/api/preview", { method: "POST", body: formData });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: "Failed" }));
-          if (res.status === 429) { setQuotaExceeded(true); break; }
+          if (res.status === 402 || res.status === 429) { setQuotaExceeded(true); break; }
           allWarnings.push(`${pdfs[i].name}: ${err.detail || "Failed to parse"}`);
           continue;
         }
@@ -2275,7 +2340,10 @@ export default function ReviewUI({
       <div className="topbar">
         <div className="topbar-brand">
           <span className="brand-dot" />
-          <span style={{ color: "var(--green)" }}>Par</span>sify
+          <span style={{ color: "var(--green)" }}>Ledger</span>Flow
+          <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 6, lineHeight: 1.2, maxWidth: 160 }}>
+            Not affiliated with Intuit Inc.
+          </span>
         </div>
         {pdfName && (
           <div className={`topbar-file ${isMultiFile ? "multi" : ""}`}>
@@ -2368,13 +2436,12 @@ export default function ReviewUI({
         </div>
       )}
 
-      {/* Warnings */}
-      {meta.warnings?.length > 0 && (
-        <div className="warnings-bar">
-          <span>⚠</span>
-          {meta.warnings.map((w, i) => <span key={i} className="warning-item">· {w}</span>)}
-        </div>
-      )}
+      {/* Warnings — aria-live so screen readers announce new warnings */}
+      <div className="warnings-bar" role="alert" aria-live="polite" aria-atomic="false"
+           style={{ display: meta.warnings?.length > 0 ? undefined : "none" }}>
+        <span aria-hidden="true">⚠</span>
+        {meta.warnings?.map((w, i) => <span key={i} className="warning-item">· {w}</span>)}
+      </div>
 
       {/* Status bar */}
       <div className="status-bar">
@@ -2476,11 +2543,11 @@ export default function ReviewUI({
             </span>
             {numPages && (
               <div className="pdf-controls">
-                <button className="btn btn-icon" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>‹</button>
-                <span className="page-counter">{currentPage} / {numPages}</span>
-                <button className="btn btn-icon" onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} disabled={currentPage === numPages}>›</button>
-                <button className="btn btn-icon" onClick={() => setPdfScale(s => Math.max(0.4, s - 0.15))}>−</button>
-                <button className="btn btn-icon" onClick={() => setPdfScale(s => Math.min(1.6, s + 0.15))}>+</button>
+                <button className="btn btn-icon" aria-label="Previous page" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>‹</button>
+                <span className="page-counter" aria-live="polite">{currentPage} / {numPages}</span>
+                <button className="btn btn-icon" aria-label="Next page" onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} disabled={currentPage === numPages}>›</button>
+                <button className="btn btn-icon" aria-label="Zoom out" onClick={() => setPdfScale(s => Math.max(0.4, s - 0.15))}>−</button>
+                <button className="btn btn-icon" aria-label="Zoom in" onClick={() => setPdfScale(s => Math.min(1.6, s + 0.15))}>+</button>
               </div>
             )}
           </div>
@@ -2531,7 +2598,7 @@ export default function ReviewUI({
         <div className={`table-pane${activePane !== "table" ? " pane-hidden" : ""}`}>
           <div className="pane-header">
             <span className="pane-label">Parsed Transactions</span>
-            <button className="btn btn-icon" title="Add row" onClick={() => setShowAddRow(s => !s)} style={{ fontSize: 16 }}>＋</button>
+            <button className="btn btn-icon" title="Add row" aria-label="Add transaction row" onClick={() => setShowAddRow(s => !s)} style={{ fontSize: 16 }}>＋</button>
           </div>
 
           <div className="table-toolbar">
@@ -2687,13 +2754,13 @@ export default function ReviewUI({
                         <td onClick={e => e.stopPropagation()} style={{ whiteSpace: "nowrap" }}>
                           {/* split button */}
                           {!tx._deleted && (
-                            <button className="btn btn-icon" title="Split transaction"
+                            <button className="btn btn-icon" title="Split transaction" aria-label="Split transaction"
                               style={{ fontSize: 12, color: "var(--blue)" }}
                               onClick={() => setSplitTxId(tx.id)}>⇗</button>
                           )}
                           {/* confirm button */}
                           {reasons.length > 0 && !tx._confirmed && !tx._deleted && (
-                            <button className="btn btn-icon" title="Mark OK"
+                            <button className="btn btn-icon" title="Mark OK" aria-label="Mark transaction as OK"
                               style={{ fontSize: 12, color: "var(--green)" }}
                               onClick={() => confirmTx(tx.id)}>✓</button>
                           )}
@@ -2701,6 +2768,7 @@ export default function ReviewUI({
                           <button
                             className={`btn btn-icon ${tx._deleted ? "" : "btn-danger"}`}
                             title={tx._deleted ? "Restore" : "Delete"}
+                            aria-label={tx._deleted ? "Restore transaction" : "Delete transaction"}
                             onClick={() => deleteTx(tx.id)}
                             style={{ fontSize: 13 }}>
                             {tx._deleted ? "↩" : "×"}
@@ -2731,7 +2799,7 @@ export default function ReviewUI({
             return (
               <div className="qbo-preview">
                 <div className="qbo-preview-header">
-                  <span className="qbo-preview-label">QBO Preview</span>
+                  <span className="qbo-preview-label">OFX Field Preview</span>
                   <span className="qbo-preview-fitid">{tx.fit_id || "FITID pending"}</span>
                   <span className="qbo-preview-close" onClick={() => setSelectedId(null)} title="Close">×</span>
                 </div>

@@ -141,5 +141,12 @@ class USAAParser(BaseParser):
 
 
 def _year_from(text: str) -> int:
-    m = re.search(r"\b(20\d{2})\b", text)
-    return int(m.group(1)) if m else date.today().year
+    """
+    Extract the statement year from header text.
+
+    Uses the LAST 4-digit year found in the text (not the first), so that a
+    statement header like "December 1, 2024 – January 31, 2025" returns 2025
+    rather than 2024 — preventing off-by-one-year errors on January statements.
+    """
+    years = re.findall(r"\b(20\d{2})\b", text)
+    return int(years[-1]) if years else date.today().year

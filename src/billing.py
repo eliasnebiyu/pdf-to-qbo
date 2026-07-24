@@ -34,9 +34,13 @@ from fastapi import HTTPException, Request
 
 log = logging.getLogger(__name__)
 
+import secrets
+
 from src.auth import (
     cancel_by_subscription,
+    get_key_hash_for_session,
     reactivate_by_subscription,
+    store_session_token,
     suspend_by_subscription,
     update_plan,
 )
@@ -77,15 +81,23 @@ def _price_to_plan() -> dict[str, str]:
 # ── Checkout ───────────────────────────────────────────────────────────────────
 
 def create_checkout_session(
-    api_key: str,
+    raw_key: str,
     email: str,
     plan: str,
     success_url: str,
     cancel_url: str,
+    allowed_origins: list[str] | None = None,
 ) -> str:
     """
     Create a Stripe Checkout session for *plan*.
-    Embeds the api_key in session metadata so the webhook can upgrade it.
+
+    Uses an opaque session token in Stripe metadata (not the key hash) so no
+    credential-derived value reaches Stripe's servers.  The token is stored
+    in the DB and used in the webhook to look up the API key.
+
+    *allowed_origins*: if provided, success_url and cancel_url must start
+    with one of these values (open-redirect protection).
+
     Returns the Checkout URL to redirect the user to.
     """
     if plan not in ("starter", "pro"):
@@ -93,6 +105,19 @@ def create_checkout_session(
             status_code=400,
             detail="Invalid plan. Choose 'starter' ($9/mo) or 'pro' ($29/mo).",
         )
+
+    # Open-redirect protection: validate redirect URLs against allowed origins
+    if allowed_origins:
+        def _allowed(url: str) -> bool:
+            return any(url.startswith(o) for o in allowed_origins)
+        if not _allowed(success_url) or not _allowed(cancel_url):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "success_url and cancel_url must point to the app's own domain. "
+                    "External redirect URLs are not permitted."
+                ),
+            )
 
     price_id = os.getenv(f"STRIPE_PRICE_{plan.upper()}", "")
     if not price_id:
@@ -104,14 +129,20 @@ def create_checkout_session(
             ),
         )
 
+    # Generate an opaque token to associate this checkout session with the key.
+    # We store the token in the DB and pass it to Stripe — never the key hash.
+    session_token = secrets.token_urlsafe(24)
+    store_session_token(raw_key, session_token)
+
     stripe = _stripe()
     session = stripe.checkout.Session.create(
         mode="subscription",
         payment_method_types=["card"],
         line_items=[{"price": price_id, "quantity": 1}],
         customer_email=email,
-        # The webhook reads this to know which API key to upgrade
-        metadata={"api_key": api_key},
+        # Opaque token — the webhook uses this to look up the key in our DB.
+        # The raw key and its hash never leave our system.
+        metadata={"session_token": session_token},
         success_url=success_url,
         cancel_url=cancel_url,
     )
@@ -169,13 +200,24 @@ async def handle_webhook(request: Request) -> dict:
 
 
 def _on_checkout_completed(session: dict, stripe) -> None:
-    """Upgrade the embedded API key to the plan whose price was purchased."""
-    api_key         = (session.get("metadata") or {}).get("api_key")
+    """Upgrade the API key to the plan whose price was purchased."""
+    session_token   = (session.get("metadata") or {}).get("session_token")
     subscription_id = session.get("subscription")
     customer_id     = session.get("customer")
 
-    if not api_key or not subscription_id:
-        return  # nothing we can do without these
+    if not session_token or not subscription_id:
+        log.error("stripe webhook: missing session_token or subscription_id in checkout session")
+        return
+
+    # Look up the key hash using the opaque session token (never stored in Stripe)
+    key_hash = get_key_hash_for_session(session_token)
+    if not key_hash:
+        log.error(
+            "stripe webhook: no API key found for session_token %s; "
+            "the token may have expired or been used already",
+            session_token,
+        )
+        return
 
     # Determine which plan was purchased from the subscription's price ID
     price_map = _price_to_plan()
@@ -191,9 +233,6 @@ def _on_checkout_completed(session: dict, stripe) -> None:
         plan = None
 
     if plan is None:
-        # Unknown price ID — do NOT silently assign a plan; log and bail out.
-        # This prevents a misconfigured env var from accidentally upgrading
-        # (or failing to upgrade) users to the wrong tier.
         log.error(
             "stripe webhook: unknown price_id for subscription %s; "
             "check STRIPE_PRICE_STARTER / STRIPE_PRICE_PRO env vars",
@@ -202,7 +241,7 @@ def _on_checkout_completed(session: dict, stripe) -> None:
         return
 
     update_plan(
-        api_key,
+        key_hash,
         plan,
         customer_id=customer_id,
         subscription_id=subscription_id,

@@ -245,7 +245,7 @@ function AppPreview() {
       <div style={{ padding: "10px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ color: C.muted, fontSize: 11 }}>✓ Balance reconciled · 0 discrepancies</span>
         <button style={{ ...s.btn, padding: "7px 16px", fontSize: 12, background: C.accent, color: "#fff" }}>
-          Export to QuickBooks®
+          Download OFX
         </button>
       </div>
     </div>
@@ -358,7 +358,7 @@ export default function LandingPage() {
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
       <section style={{ padding: "80px 24px 60px", background: `radial-gradient(ellipse 80% 50% at 50% -10%, rgba(16,185,129,0.12) 0%, transparent 70%), ${C.bg}` }}>
-        <div style={{ ...s.container, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60, alignItems: "center" }}>
+        <div style={{ ...s.container, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 60, alignItems: "center" }}>
           <div>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 8,
@@ -366,14 +366,17 @@ export default function LandingPage() {
               borderRadius: 20, padding: "5px 14px", marginBottom: 24,
             }}>
               <span style={{ width: 6, height: 6, background: C.accent, borderRadius: "50%", display: "inline-block" }} />
-              <span style={{ color: C.accent, fontSize: 12, fontWeight: 600, letterSpacing: 0.5 }}>20 banks · No manual entry</span>
+              <span style={{ color: C.accent, fontSize: 12, fontWeight: 600, letterSpacing: 0.5 }}>20 native parsers + AI fallback</span>
             </div>
 
-            <h1 style={{ fontSize: "clamp(32px, 4vw, 52px)", fontWeight: 900, lineHeight: 1.1, margin: "0 0 20px", letterSpacing: -1 }}>
+            <h1 style={{ fontSize: "clamp(32px, 4vw, 52px)", fontWeight: 900, lineHeight: 1.1, margin: "0 0 12px", letterSpacing: -1 }}>
               Turn any bank statement PDF into{" "}
               <span style={{ color: C.accent }}>OFX files for QuickBooks®</span>{" "}
               in seconds
             </h1>
+            <p style={{ fontSize: 11, color: C.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
+              QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+            </p>
             <p style={{ fontSize: 17, color: C.muted, margin: "0 0 36px", lineHeight: 1.7, maxWidth: 480 }}>
               Upload your PDF, edit every transaction inline, reconcile against real balances, then export.
               The only converter that shows you exactly what it parsed — and lets you fix it before importing into QuickBooks.
@@ -413,7 +416,7 @@ export default function LandingPage() {
             {[
               { n: "01", title: "Upload your PDF", body: "Drop any bank statement — Chase, Fifth Third, Amex, 20 banks total. Batch upload multiple months at once." },
               { n: "02", title: "Review & edit inline", body: "Every transaction is editable. Fix misreads, split transactions, assign categories, reconcile balances." },
-              { n: "03", title: "Export for QuickBooks®", body: "Download OFX, QFX, or CSV. Import into QuickBooks Online in two clicks." },
+              { n: "03", title: "Download & Import", body: "Download OFX, QFX, or CSV. Import into QuickBooks Online or your accounting software in two clicks." },
             ].map(({ n, title, body }) => (
               <div key={n} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <span style={{ fontSize: 40, fontWeight: 900, color: C.accentBg, WebkitTextStroke: `2px ${C.accent}`, fontVariantNumeric: "tabular-nums" }}>{n}</span>
@@ -429,14 +432,14 @@ export default function LandingPage() {
       <section style={{ padding: "72px 24px", borderTop: `1px solid ${C.border}`, background: "rgba(255,255,255,0.015)" }}>
         <div style={s.container}>
           <p style={{ textAlign: "center", color: C.accent, fontWeight: 700, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>WHY US</p>
-          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>What DocuClipper can't do</h2>
-          <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 48px" }}>We built the features accountants actually asked for.</p>
+          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>What sets us apart</h2>
+          <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 48px" }}>Features our users actually asked for.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24 }}>
             <DiffCard
               icon="✏️"
               tag="ONLY US"
               title="Edit before you export"
-              sub="Inline editing with live balance reconciliation. Fix parser misreads, split one transaction into many, override categories — before importing into QuickBooks. Every competitor dumps a file and hopes for the best."
+              sub="Inline editing with live balance reconciliation. Fix parser misreads, split one transaction into many, override categories — all before you import. Other converters give you a finished file with no way to review it first."
             />
             <DiffCard
               icon="⚡"
@@ -482,7 +485,7 @@ export default function LandingPage() {
           <p style={{ textAlign: "center", color: C.accent, fontWeight: 700, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>PRICING</p>
           <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>Simple, honest pricing</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 48px" }}>
-            DocuClipper charges $29–$99/month. We start at $0.
+            Start free — upgrade when you need more volume.
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24, maxWidth: 900, margin: "0 auto" }}>
             <PricingCard
@@ -521,7 +524,7 @@ export default function LandingPage() {
                 "Unlimited conversions",
                 "Everything in Starter",
                 "Accountant workspace (roadmap)",
-                "Direct QBO import (roadmap)",
+                "Multi-entity batch processing (roadmap)",
                 "White-label exports (roadmap)",
               ]}
               cta="Go Pro"

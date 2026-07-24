@@ -63,6 +63,7 @@ export default function PrivacyPage() {
         <Section title="Overview">
           <P>LedgerFlow is built for accountants and bookkeepers who handle sensitive financial documents. We take privacy seriously. This policy explains exactly what we collect, why, and how long we keep it.</P>
           <P><strong style={{ color: C.white }}>Short version:</strong> We do not store the contents of your bank statement PDFs. We never sell your data. We never train AI models on your documents.</P>
+          <P><strong style={{ color: C.white }}>Controller:</strong> LedgerFlow Inc., a Delaware corporation. Registered office: 651 N Broad St, Suite 201, Middletown, DE 19709, United States. For all privacy requests, contact <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject "Privacy Request". You may also write to us at the registered address above.</P>
         </Section>
 
         <Section title="1. Information We Collect">
@@ -201,7 +202,50 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Non-Discrimination:</strong> We will not discriminate against you for exercising any of your CCPA rights.</li>
           </ul>
           <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject line "California Privacy Request". We will respond within 45 days.</P>
+          <P><strong style={{ color: C.white }}>Do Not Sell or Share My Personal Information.</strong> We do not sell or share your personal information as defined by the CCPA/CPRA. If you wish to confirm this in writing or wish to opt out of any future sale or sharing, use the link below or email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <div style={{ margin: "12px 0" }}>
+            <a
+              href="mailto:support@ledgerflow.io?subject=CCPA%20Opt-Out%20Request"
+              style={{
+                display: "inline-block",
+                padding: "8px 16px",
+                background: "transparent",
+                border: `1.5px solid ${C.accent}`,
+                borderRadius: 6,
+                color: C.accent,
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Do Not Sell or Share My Information →
+            </a>
+          </div>
           <P><strong style={{ color: C.white }}>Categories of personal information collected:</strong> identifiers (email address, IP address), internet or other electronic network activity (usage counters, error events). We do not collect sensitive personal information as defined by the CPRA.</P>
+        </Section>
+
+        <Section title="11. International Data Transfers (GDPR)">
+          <P>LedgerFlow Inc. is based in the United States. If you are located in the European Economic Area (EEA) or United Kingdom, your personal data may be transferred to and processed in the United States, which may not provide the same level of data protection as your home jurisdiction.</P>
+          <P>We take the following steps to ensure adequate protection when transferring data internationally:</P>
+          <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>Railway (infrastructure):</strong> Servers are in the United States. Railway participates in data transfer frameworks and offers DPA coverage under Standard Contractual Clauses (SCCs) approved by the European Commission.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>Anthropic (AI fallback):</strong> Processes text extracted from PDFs in the US. Anthropic offers an API Data Processing Addendum with SCCs. Text relayed to Anthropic is not stored by Anthropic for model training.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>Stripe (payments):</strong> Certified under the EU–US Data Privacy Framework and offers SCCs for international data transfers. Stripe is also ISO 27001-certified.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>Sentry (error monitoring):</strong> Sentry offers EU data residency options and provides SCCs for transfers to the United States.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              <strong style={{ color: C.white }}>Resend (transactional email):</strong> Processes email address and delivery metadata in the US. Resend provides SCCs under its Data Processing Agreement.
+            </li>
+          </ul>
+          <P>To request a copy of our Data Processing Addendum (DPA) or the applicable Standard Contractual Clauses, email <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject "DPA Request".</P>
+          <P>If you are an EEA or UK resident and believe we have not adequately addressed a privacy concern, you have the right to lodge a complaint with your local data protection authority.</P>
         </Section>
 
         <Section title="12. Changes to This Policy">
