@@ -1130,6 +1130,11 @@ if _DIST.exists():
         ico = _DIST / "favicon.ico"
         return FileResponse(ico) if ico.exists() else Response(status_code=204)
 
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def _favicon_svg() -> Response:
+        svg = _DIST / "favicon.svg"
+        return FileResponse(svg, media_type="image/svg+xml") if svg.exists() else Response(status_code=204)
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def _serve_spa(full_path: str = "") -> FileResponse:
         """Catch-all: return index.html so React Router handles client-side paths."""
