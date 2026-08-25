@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Dark background -->
+  <rect width="32" height="32" rx="8" fill="#0b1120"/>
+  <!-- Green "L" lettermark -->
+  <text x="6" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="900" fill="#10b981">L</text>
+  <!-- Small green dot accent -->
+  <circle cx="25" cy="10" r="3" fill="#10b981"/>
+</svg>
