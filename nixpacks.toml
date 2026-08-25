@@ -4,6 +4,9 @@
 # "build" runs after Python deps are installed and before the server starts.
 # It compiles the React frontend so FastAPI can serve it from frontend/dist/.
 
+[phases.setup]
+nixPkgs = ["nodejs_20", "python311"]
+
 [phases.build]
 cmds = [
   "cd frontend && npm install && npm run build"
