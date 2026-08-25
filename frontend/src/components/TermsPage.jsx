@@ -53,8 +53,8 @@ export default function TermsPage() {
         </Section>
 
         <Section title="2. Description of Service">
-          <P><em style={{ color: C.muted, fontSize: 13 }}>Trademark notice: QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc. OFX and QFX are open file formats compatible with QuickBooks and other accounting software.</em></P>
-          <P>LedgerFlow is a software-as-a-service tool that converts bank statement PDF files into open OFX/QFX/CSV formats that are compatible with QuickBooks and other accounting applications. The Service provides:</P>
+          <P><em style={{ color: C.muted, fontSize: 13 }}>Trademark notice: QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc. OFX and QFX are open file formats compatible with QuickBooks® and other accounting software.</em></P>
+          <P>LedgerFlow is a software-as-a-service tool that converts bank statement PDF files into open OFX/QFX/CSV formats that are compatible with QuickBooks® and other accounting applications. The Service provides:</P>
           <Ul items={[
             "Automated parsing of bank statement PDFs using rule-based and AI-assisted extraction",
             "An in-browser review interface for editing and reconciling transactions",
@@ -62,7 +62,7 @@ export default function TermsPage() {
             "A REST API for programmatic access",
           ]} />
           <P>LedgerFlow is a productivity tool. It is not a financial institution, accounting firm, or licensed financial advisor. We do not hold, transmit, or have access to your financial accounts.</P>
-          <P><strong style={{ color: C.white }}>Service Level.</strong> We target 99.5% monthly uptime for the API and web UI. For current service status and maintenance announcements, contact <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> or check our status page when available. Planned maintenance is announced at least 24 hours in advance by email to registered users where possible. Scheduled maintenance windows are excluded from uptime calculations.</P>
+          <P><strong style={{ color: C.white }}>Service Level.</strong> We target 99.5% monthly uptime for the API and web UI. For current service status and maintenance announcements, contact <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> or check our status page when available. Planned maintenance is announced at least 24 hours in advance by email to registered users where possible. Scheduled maintenance windows are excluded from uptime calculations.</P>
         </Section>
 
         <Section title="3. API Keys and Accounts">
@@ -70,7 +70,7 @@ export default function TermsPage() {
           <Ul items={[
             "Keeping your API key confidential",
             "All activity that occurs under your API key",
-            "Notifying us immediately at support@ledgerflow.io if you believe your key has been compromised",
+            "Notifying us immediately at support@ledgerflows.org if you believe your key has been compromised",
           ]} />
           <P>We reserve the right to revoke any API key that we believe is being used in violation of these Terms.</P>
         </Section>
@@ -84,7 +84,7 @@ export default function TermsPage() {
           ]} />
           <P>Paid plans are billed in advance on a monthly basis through Stripe. All fees are non-refundable except where required by applicable law. We reserve the right to change pricing with 30 days' notice to your registered email address.</P>
           <P>Cancelling your subscription will not trigger a refund for the current billing period. Your paid access continues until the end of the period you have paid for.</P>
-          <P><strong style={{ color: C.white }}>EU/UK Consumers:</strong> If you are a consumer located in the European Union or United Kingdom, you have the right to withdraw from a paid subscription within 14 days of purchase (the "cooling-off period") without giving any reason, provided you have not used any paid conversions during that period. To exercise this right, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> before the 14-day period expires. Once you have used the Service (e.g. processed a PDF), the right of withdrawal is lost in respect of the digital content consumed.</P>
+          <P><strong style={{ color: C.white }}>EU/UK Consumers:</strong> If you are a consumer located in the European Union or United Kingdom, you have the right to withdraw from a paid subscription within 14 days of purchase (the "cooling-off period") without giving any reason, provided you have not used any paid conversions during that period. To exercise this right, contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> before the 14-day period expires. Once you have used the Service (e.g. processed a PDF), the right of withdrawal is lost in respect of the digital content consumed.</P>
         </Section>
 
         <Section title="5. Acceptable Use">
@@ -143,7 +143,7 @@ export default function TermsPage() {
             "Maintaining your own data processing agreements with your clients as required by applicable law",
             "Complying with applicable data protection regulations in your jurisdiction",
           ]} />
-          <P>LedgerFlow acts as a sub-processor with respect to any client personal data transmitted through the Service. Our processing is limited to parsing the document and returning the result during the same request — we do not retain PDF contents or parsed transaction data. For a Data Processing Addendum (DPA), contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <P>LedgerFlow acts as a sub-processor with respect to any client personal data transmitted through the Service. Our processing is limited to parsing the document and returning the result during the same request — we do not retain PDF contents or parsed transaction data. For a Data Processing Addendum (DPA), contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
         </Section>
 
         <Section title="13. Governing Law">
@@ -153,12 +153,12 @@ export default function TermsPage() {
         <Section title="14. Dispute Resolution and Arbitration">
           <P><strong style={{ color: C.white }}>Binding Arbitration.</strong> Except for claims that qualify for small claims court, you and LedgerFlow agree to resolve any dispute, claim, or controversy arising out of or relating to these Terms or the Service through final and binding arbitration administered by JAMS under its Streamlined Arbitration Rules and Procedures. The arbitration shall take place in Delaware, USA, or by videoconference. The arbitrator's decision shall be final and binding and may be entered as a judgment in any court of competent jurisdiction.</P>
           <P><strong style={{ color: C.white }}>Class Action Waiver.</strong> You and LedgerFlow each agree that any dispute resolution proceeding will be conducted only on an individual basis and not in a class, consolidated, or representative action. If for any reason a claim proceeds in court rather than in arbitration, you waive any right to a jury trial.</P>
-          <P><strong style={{ color: C.white }}>Opt-Out.</strong> You may opt out of this arbitration agreement by sending written notice to <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> within 30 days of first accepting these Terms. Your notice must include your name, email address, and a clear statement that you wish to opt out of arbitration.</P>
+          <P><strong style={{ color: C.white }}>Opt-Out.</strong> You may opt out of this arbitration agreement by sending written notice to <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> within 30 days of first accepting these Terms. Your notice must include your name, email address, and a clear statement that you wish to opt out of arbitration.</P>
           <P><strong style={{ color: C.white }}>EU/UK users:</strong> This arbitration clause does not apply to you to the extent it is inconsistent with mandatory consumer protection law in your jurisdiction.</P>
         </Section>
 
         <Section title="15. Contact">
-          <P>Questions about these Terms? Contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <P>Questions about these Terms? Contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
         </Section>
       </div>
 
@@ -172,6 +172,9 @@ export default function TermsPage() {
             </button>
           ))}
         </div>
+        <p style={{ color: C.muted, fontSize: 11, margin: "16px 0 0", lineHeight: 1.6 }}>
+          QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+        </p>
       </footer>
     </div>
   );

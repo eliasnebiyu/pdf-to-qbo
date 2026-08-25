@@ -1,5 +1,5 @@
 """
-CSV exporter — outputs a QuickBooks-compatible CSV for manual import.
+CSV exporter — outputs a QuickBooks®-compatible CSV for manual import.
 This is the fallback when OFX import fails or the user prefers CSV.
 
 QBO CSV import expects: Date, Description, Amount (negative=debit)
@@ -13,7 +13,7 @@ from pathlib import Path
 from src.models import ParsedStatement
 
 
-# QuickBooks Online CSV column headers (exact names QBO expects)
+# QuickBooks® Online CSV column headers (exact names QBO expects)
 _QBO_HEADERS = ["Date", "Description", "Original Description", "Amount", "Transaction Type", "Category", "Account Name", "Labels", "Notes"]
 
 

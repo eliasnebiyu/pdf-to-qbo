@@ -1,9 +1,9 @@
 """
 OFX / QFX exporter.
 
-OFX (Open Financial Exchange) is the format QuickBooks uses for
-bank statement import. QFX is Quicken's variant — structurally
-identical, different header value. Both are accepted by QBO.
+OFX (Open Financial Exchange) is the format QuickBooks® uses for
+bank statement import. QFX is Quicken®'s variant — structurally
+identical, different header value. Both are accepted by QuickBooks®.
 
 Spec reference: OFX 1.02 (SGML, not XML — the version QBO still uses)
 
@@ -259,7 +259,7 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     ):
         statement.warnings.append(
             "INVESTMENT account type is not supported by the OFX 1.02 bank "
-            "envelope. Exported as CHECKING; verify in QuickBooks after import."
+            "envelope. Exported as CHECKING; verify in QuickBooks® after import."
         )
 
     # Unique TRNUID per export (OFX spec §2.7.2 — must be unique per response)
@@ -277,12 +277,24 @@ def to_ofx(statement: ParsedStatement, is_qfx: bool = False) -> str:
     # Propagate any truncation warnings back to the statement
     statement.warnings.extend(trunc_warnings)
 
-    # Closing balance
-    ledger_bal = ""
+    # Closing balance — OFX 1.02 §11.4.2.2 requires <LEDGERBAL> in <STMTRS>.
+    # If the parser could not extract closing_balance, emit 0.00 and add a
+    # warning so the user knows to reconcile manually in QuickBooks®.
     if acc.closing_balance is not None:
         ledger_bal = (
             f"<LEDGERBAL>\n"
             f"<BALAMT>{_amount(acc.closing_balance)}\n"
+            f"<DTASOF>{dt_end}\n"
+            f"</LEDGERBAL>"
+        )
+    else:
+        statement.warnings.append(
+            "Closing balance could not be extracted — <LEDGERBAL> set to 0.00. "
+            "Reconcile manually in QuickBooks®."
+        )
+        ledger_bal = (
+            f"<LEDGERBAL>\n"
+            f"<BALAMT>0.00\n"
             f"<DTASOF>{dt_end}\n"
             f"</LEDGERBAL>"
         )

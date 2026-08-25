@@ -21,7 +21,7 @@ from src.models import Transaction
 
 
 # ── QBO category taxonomy ─────────────────────────────────────────────────────
-# These match QuickBooks Online's default chart of accounts.
+# These match QuickBooks® Online's default chart of accounts.
 # Each tuple: (list_of_keywords, category_name)
 # Keywords are matched case-insensitively against the FULL description.
 
@@ -200,7 +200,7 @@ def categorize_transactions(
 
     The ``category`` field is informational — it goes into the CSV
     export and the ReviewUI.  OFX does not support categories; the
-    user still maps them inside QuickBooks after import.
+    user still maps them inside QuickBooks® after import.
 
     Returns the same list (mutated in-place) for convenience.
     """

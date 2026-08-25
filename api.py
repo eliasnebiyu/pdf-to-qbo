@@ -1,6 +1,6 @@
 """
-PDF-to-QBO REST API  v1.2
-==========================
+LedgerFlow REST API  v1.2
+=========================
 
 Public endpoints  (no API key required)
 ----------------------------------------
@@ -142,7 +142,8 @@ app = FastAPI(
     title="LedgerFlow",
     description=(
         "Convert bank statement PDFs to OFX/QFX/CSV files compatible with "
-        "QuickBooks and other accounting software. "
+        "QuickBooks® and other accounting software. "
+        "QuickBooks® is a registered trademark of Intuit Inc. "
         "LedgerFlow is not affiliated with or endorsed by Intuit Inc."
     ),
     version="1.2.0",
@@ -202,8 +203,9 @@ class _CSPMiddleware(_BaseHTTPMiddleware):
         # The SPA loads its own assets from 'self'; Sentry uses worker-src.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "   # Vite inline chunks
-            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "                    # no unsafe-inline; Vite prod build has no inline scripts
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
             "connect-src 'self' https://*.sentry.io https://api.stripe.com; "
             "frame-src https://js.stripe.com; "
@@ -567,7 +569,7 @@ async def convert(
     file:       UploadFile = File(..., description="Bank statement PDF"),
     format:     Literal["ofx", "qfx", "csv"] = Query(
         default="ofx",
-        description="Output format: ofx (QBO import), qfx (Quicken), csv",
+        description="Output format: ofx (QuickBooks® import), qfx (Quicken®), csv",
     ),
     start_date: Optional[str] = Query(
         default=None,
@@ -1063,6 +1065,10 @@ async def export_transactions(
 
     statement = ParsedStatement(account=account, transactions=txns)
     statement.assign_fit_ids()
+
+    # Audit log — export events are tracked even though no quota is consumed.
+    raw_key = request.headers.get("x-api-key", "").strip()
+    log_conversion(raw_key, req.bank, "export", len(txns))
 
     fmt = req.format.lower()
     if fmt in ("ofx", "qfx"):

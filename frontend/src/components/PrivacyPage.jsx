@@ -63,7 +63,7 @@ export default function PrivacyPage() {
         <Section title="Overview">
           <P>LedgerFlow is built for accountants and bookkeepers who handle sensitive financial documents. We take privacy seriously. This policy explains exactly what we collect, why, and how long we keep it.</P>
           <P><strong style={{ color: C.white }}>Short version:</strong> We do not store the contents of your bank statement PDFs. We never sell your data. We never train AI models on your documents.</P>
-          <P><strong style={{ color: C.white }}>Controller:</strong> LedgerFlow Inc., a Delaware corporation. Registered office: 651 N Broad St, Suite 201, Middletown, DE 19709, United States. For all privacy requests, contact <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject "Privacy Request". You may also write to us at the registered address above.</P>
+          <P><strong style={{ color: C.white }}>Controller:</strong> LedgerFlow Inc., a Delaware corporation. Registered office: 651 N Broad St, Suite 201, Middletown, DE 19709, United States. For all privacy requests, contact <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> with the subject "Privacy Request". You may also write to us at the registered address above.</P>
         </Section>
 
         <Section title="1. Information We Collect">
@@ -101,16 +101,17 @@ export default function PrivacyPage() {
             ["PDF content (in-memory only)", "Performance of a contract (Art. 6(1)(b)) — processing your uploaded file is the core service"],
             ["Billing data (via Stripe)", "Performance of a contract (Art. 6(1)(b)) — processing your payment for a paid subscription"],
           ]} />
-          <P>Where we rely on legitimate interests, you have the right to object to that processing. To exercise this right, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <P>Where we rely on legitimate interests, you have the right to object to that processing. To exercise this right, contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
         </Section>
 
         <Section title="3. PDF Processing and AI Fallback">
           <P>When you upload a PDF, it is transmitted over HTTPS to our servers, parsed in memory, and the result (a JSON list of transactions) is returned to your browser. The PDF is deleted from our servers immediately after processing — it is never written to persistent storage.</P>
-          <P>For bank layouts that our native parsers do not recognise, we may relay the extracted text (not the raw PDF) to Anthropic's Claude API to assist with parsing. In those cases:</P>
+          <P>For bank layouts that our native parsers do not recognise, we relay content to Anthropic's Claude API to assist with parsing. <strong style={{ color: C.white }}>Two paths exist depending on whether the PDF is digital or scanned:</strong></P>
           <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
-            <li style={{ marginBottom: 6 }}>Only the text content of the PDF is sent — not the file itself</li>
-            <li style={{ marginBottom: 6 }}>Anthropic does not use this content to train models (<a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: C.accent }}>Anthropic Privacy Policy</a>)</li>
-            <li style={{ marginBottom: 6 }}>This only happens when no native parser succeeds</li>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Digital PDFs</strong> — only the extracted text layer is sent to Claude. The raw PDF file is never transmitted to Anthropic.</li>
+            <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Scanned / image-only PDFs</strong> — because there is no extractable text, individual page images (PNG, 200 dpi) are sent to Claude Vision API to perform OCR. No other file contents are transmitted.</li>
+            <li style={{ marginBottom: 6 }}>Anthropic does not store or train on API request data (<a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: C.accent }}>Anthropic Privacy Policy</a>)</li>
+            <li style={{ marginBottom: 6 }}>AI fallback only triggers when no native parser succeeds</li>
           </ul>
         </Section>
 
@@ -127,7 +128,7 @@ export default function PrivacyPage() {
               {[
                 ["Stripe", "Payment processing", "https://stripe.com/privacy"],
                 ["Resend", "Transactional email delivery", "https://resend.com/privacy"],
-                ["Anthropic", "AI fallback parsing (text only)", "https://www.anthropic.com/privacy"],
+                ["Anthropic", "AI fallback parsing — extracted text for digital PDFs; page images (PNG) for scanned/image-only PDFs via Claude Vision. Zero data retention.", "https://www.anthropic.com/privacy"],
                 ["Sentry", "Error monitoring", "https://sentry.io/privacy/"],
                 ["Railway", "Cloud infrastructure (servers in US)", "https://railway.app/legal/privacy"],
               ].map(([svc, purpose, url]) => (
@@ -149,7 +150,7 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}>No persistent storage of PDF contents or parsed transaction data</li>
             <li style={{ marginBottom: 6 }}>Rate limiting and abuse detection on all endpoints</li>
           </ul>
-          <P>No method of transmission over the internet is 100% secure. If you discover a security vulnerability, please disclose it responsibly to <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <P>No method of transmission over the internet is 100% secure. If you discover a security vulnerability, please disclose it responsibly to <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
         </Section>
 
         <Section title="6. Your Rights">
@@ -161,7 +162,7 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Port</strong> your data in a machine-readable format</li>
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Object</strong> to certain processing activities</li>
           </ul>
-          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>. We will respond within 30 days.</P>
+          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>. We will respond within 30 days.</P>
         </Section>
 
         <Section title="7. Data Retention">
@@ -182,14 +183,14 @@ export default function PrivacyPage() {
               <strong style={{ color: C.white }}>localStorage</strong> (browser) to store your API key and session draft — this data never leaves your device. By using the Service you acknowledge that these values are stored locally; you can clear them at any time via your browser's developer tools or settings.
             </li>
             <li style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.white }}>Error monitoring cookies</strong> set by Sentry for session replay (5% of sessions). Replay is fully masked — no text or transaction content is visible. You can opt out by contacting us.
+              <strong style={{ color: C.white }}>Error monitoring</strong> — Sentry may set a cookie to correlate error reports within a single session. No transaction content, PDF data, or personal information is captured in error reports.
             </li>
           </ul>
           <P>We do not use cookies for advertising, re-targeting, or cross-site tracking.</P>
         </Section>
 
         <Section title="9. Children's Privacy">
-          <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
         </Section>
 
         <Section title="10. California Privacy Rights (CCPA / CPRA)">
@@ -201,11 +202,11 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Opt Out of Sale or Sharing:</strong> We do <em>not</em> sell, share, or disclose your personal information to third parties for cross-context behavioural advertising. There is nothing to opt out of, but you may confirm this in writing by emailing us.</li>
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Non-Discrimination:</strong> We will not discriminate against you for exercising any of your CCPA rights.</li>
           </ul>
-          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject line "California Privacy Request". We will respond within 45 days.</P>
-          <P><strong style={{ color: C.white }}>Do Not Sell or Share My Personal Information.</strong> We do not sell or share your personal information as defined by the CCPA/CPRA. If you wish to confirm this in writing or wish to opt out of any future sale or sharing, use the link below or email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a>.</P>
+          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> with the subject line "California Privacy Request". We will respond within 45 days.</P>
+          <P><strong style={{ color: C.white }}>Do Not Sell or Share My Personal Information.</strong> We do not sell or share your personal information as defined by the CCPA/CPRA. If you wish to confirm this in writing or wish to opt out of any future sale or sharing, use the link below or email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
           <div style={{ margin: "12px 0" }}>
             <a
-              href="mailto:support@ledgerflow.io?subject=CCPA%20Opt-Out%20Request"
+              href="mailto:support@ledgerflows.org?subject=CCPA%20Opt-Out%20Request"
               style={{
                 display: "inline-block",
                 padding: "8px 16px",
@@ -232,7 +233,7 @@ export default function PrivacyPage() {
               <strong style={{ color: C.white }}>Railway (infrastructure):</strong> Servers are in the United States. Railway participates in data transfer frameworks and offers DPA coverage under Standard Contractual Clauses (SCCs) approved by the European Commission.
             </li>
             <li style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.white }}>Anthropic (AI fallback):</strong> Processes text extracted from PDFs in the US. Anthropic offers an API Data Processing Addendum with SCCs. Text relayed to Anthropic is not stored by Anthropic for model training.
+              <strong style={{ color: C.white }}>Anthropic (AI fallback):</strong> Processes text (digital PDFs) or page images (scanned PDFs) in the US. Anthropic offers an API Data Processing Addendum with SCCs. Data relayed to Anthropic is not stored or used for model training.
             </li>
             <li style={{ marginBottom: 6 }}>
               <strong style={{ color: C.white }}>Stripe (payments):</strong> Certified under the EU–US Data Privacy Framework and offers SCCs for international data transfers. Stripe is also ISO 27001-certified.
@@ -244,7 +245,7 @@ export default function PrivacyPage() {
               <strong style={{ color: C.white }}>Resend (transactional email):</strong> Processes email address and delivery metadata in the US. Resend provides SCCs under its Data Processing Agreement.
             </li>
           </ul>
-          <P>To request a copy of our Data Processing Addendum (DPA) or the applicable Standard Contractual Clauses, email <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a> with the subject "DPA Request".</P>
+          <P>To request a copy of our Data Processing Addendum (DPA) or the applicable Standard Contractual Clauses, email <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> with the subject "DPA Request".</P>
           <P>If you are an EEA or UK resident and believe we have not adequately addressed a privacy concern, you have the right to lodge a complaint with your local data protection authority.</P>
         </Section>
 
@@ -254,7 +255,7 @@ export default function PrivacyPage() {
 
         <Section title="13. Contact">
           <P>Questions or concerns about this Privacy Policy?<br />
-          Email us at <a href="mailto:support@ledgerflow.io" style={{ color: C.accent }}>support@ledgerflow.io</a></P>
+          Email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a></P>
         </Section>
       </div>
 
@@ -268,6 +269,9 @@ export default function PrivacyPage() {
             </button>
           ))}
         </div>
+        <p style={{ color: C.muted, fontSize: 11, margin: "16px 0 0", lineHeight: 1.6 }}>
+          QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+        </p>
       </footer>
     </div>
   );

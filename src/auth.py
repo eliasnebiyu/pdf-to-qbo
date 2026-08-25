@@ -133,7 +133,7 @@ def create_api_key(email: str, plan: str = "free") -> str:
                 status_code=409,
                 detail=(
                     "An active API key already exists for this email address. "
-                    "Check your inbox for the original key, or contact support@ledgerflow.io "
+                    "Check your inbox for the original key, or contact support@ledgerflows.org "
                     "to rotate your key."
                 ),
             )

@@ -18,8 +18,8 @@ import os
 log = logging.getLogger(__name__)
 
 _RESEND_KEY  = os.getenv("RESEND_API_KEY", "")
-_FROM        = os.getenv("RESEND_FROM", "LedgerFlow <noreply@ledgerflow.io>")
-_APP_URL     = os.getenv("APP_URL", "https://ledgerflow.io")
+_FROM        = os.getenv("RESEND_FROM", "LedgerFlow <noreply@ledgerflows.org>")
+_APP_URL     = os.getenv("APP_URL", "https://ledgerflows.org")
 
 
 def _client():
@@ -58,7 +58,7 @@ def send_api_key_email(email: str, api_key: str, plan: str = "free") -> bool:
     <h1 style="font-size:22px;font-weight:800;color:#0b1120;margin:0 0 6px;">
       <span style="color:#10b981;">LedgerFlow</span>
     </h1>
-    <p style="color:#64748b;font-size:13px;margin:0 0 28px;">Bank statement converter for QuickBooks</p>
+    <p style="color:#64748b;font-size:13px;margin:0 0 28px;">Bank statement converter for QuickBooks®</p>
 
     <p style="color:#1e293b;font-size:15px;margin:0 0 20px;">
       Hi there — your free API key is ready. Copy it now; it won't be shown again.
@@ -89,7 +89,7 @@ def send_api_key_email(email: str, api_key: str, plan: str = "free") -> bool:
       <li>Go to <a href="{_APP_URL}/app" style="color:#10b981;">{_APP_URL}/app</a></li>
       <li>Click <strong>Add key</strong> (top right) and paste your key</li>
       <li>Upload any bank statement PDF</li>
-      <li>Review, edit, and export to QuickBooks</li>
+      <li>Review, edit, and export to QuickBooks®</li>
     </ol>
 
     <p style="color:#94a3b8;font-size:12px;margin:28px 0 0;line-height:1.7;">
@@ -130,7 +130,7 @@ def send_parsing_error_report(
     if resend is None:
         return False
 
-    support = os.getenv("SUPPORT_EMAIL", "support@ledgerflow.io")
+    support = os.getenv("SUPPORT_EMAIL", "support@ledgerflows.org")
     body    = f"""
 Parsing error report from {user_email}
 

@@ -1,5 +1,5 @@
 """
-Core data models for the PDF-to-QBO converter.
+Core data models for LedgerFlow.
 All financial data flows through these models to ensure consistency.
 """
 from __future__ import annotations
@@ -141,7 +141,7 @@ class Transaction(BaseModel):
 
         Collision handling: if two transactions share the same hash (same date,
         amount, and description — e.g. two identical coffee purchases on the
-        same day) assign_fit_ids() appends a suffix (-1, -2 …) to each
+        same day) assign_fit_ids() appends a two-digit counter (01, 02 …) to each
         successive duplicate so every FITID in a statement is unique.
         """
         canonical = (
@@ -207,11 +207,12 @@ class ParsedStatement(BaseModel):
         ──────────────────
         Two transactions with the same date, amount, and description (e.g.
         two identical $4.50 coffee purchases on the same day) would hash to
-        the same base ID.  We detect these and append an underscore + counter
-        (not a hyphen — OFX 1.02 §3.2.3 restricts FITIDs to alphanumeric):
+        the same base ID.  We detect these and append a zero-padded decimal
+        counter directly (no separator) to keep the FITID strictly alphanumeric
+        per OFX 1.02 §3.2.3:
             20240115abc123def456abcd       ← first occurrence  (date + 16-char hex)
-            20240115abc123def456abcd_1     ← second occurrence (collision suffix)
-            20240115abc123def456abcd_2     ← third occurrence …
+            20240115abc123def456abcd01     ← second occurrence (collision suffix)
+            20240115abc123def456abcd02     ← third occurrence …
         """
         seen: dict[str, int] = {}
         for tx in self.transactions:
@@ -222,6 +223,7 @@ class ParsedStatement(BaseModel):
                 base  = tx.generate_fit_id()
                 count = seen.get(base, 0)
                 seen[base] = count + 1
-                # OFX 1.02 §3.2.3: FITID must be unique and alphanumeric.
-                # Use underscore suffix (not hyphen) so the ID stays alphanumeric.
-                tx.fit_id = f"{base}_{count}" if count else base
+                # OFX 1.02 §3.2.3: FITID must be unique and strictly alphanumeric.
+                # Append a two-digit decimal counter for collisions — no separator,
+                # keeping the full ID alphanumeric (e.g. 20240115abc123…abcd01).
+                tx.fit_id = f"{base}{count:02d}" if count else base

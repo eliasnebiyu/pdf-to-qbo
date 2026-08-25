@@ -1,5 +1,5 @@
 /**
- * PDF-to-QBO Manual Review UI
+ * LedgerFlow — PDF Statement Review UI
  *
  * Dependencies (add to package.json):
  *   "react-pdf": "^7.7.0"
@@ -9,8 +9,8 @@
  *   • Inline editing of every field including category
  *   • Split transaction modal (one tx → two, amounts must sum to original)
  *   • Expanded OFX type options (CHECK, ATM, POS, DIRECTDEP, DIRECTDEBIT, XFER, PAYMENT)
- *   • QBO category suggestions shown + editable
- *   • Export sends category + account_type for full QBO compatibility
+ *   • QuickBooks® category suggestions shown + editable
+ *   • Export sends category + account_type for full QuickBooks® compatibility
  *   • Statement reconciliation, PDF viewer with transaction highlighting
  */
 
@@ -825,8 +825,8 @@ const css = `
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-  /* ── QBO preview panel ────────────────────────────────────────── */
-  .qbo-preview {
+  /* ── OFX preview panel ────────────────────────────────────────── */
+  .ofx-preview {
     border-top: 1px solid var(--border);
     background: var(--ink-3);
     flex-shrink: 0;
@@ -835,7 +835,7 @@ const css = `
     flex-direction: column;
     overflow: hidden;
   }
-  .qbo-preview-header {
+  .ofx-preview-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -844,14 +844,14 @@ const css = `
     flex-shrink: 0;
     gap: 8px;
   }
-  .qbo-preview-label {
+  .ofx-preview-label {
     font-family: var(--mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--muted);
   }
-  .qbo-preview-fitid {
+  .ofx-preview-fitid {
     font-family: var(--mono);
     font-size: 10px;
     color: var(--subtle);
@@ -864,7 +864,7 @@ const css = `
     white-space: nowrap;
     max-width: 240px;
   }
-  .qbo-preview-close {
+  .ofx-preview-close {
     font-family: var(--mono);
     font-size: 12px;
     color: var(--muted);
@@ -873,7 +873,7 @@ const css = `
     margin-left: auto;
     flex-shrink: 0;
   }
-  .qbo-preview-close:hover { color: var(--white); }
+  .ofx-preview-close:hover { color: var(--white); }
   .qbo-code {
     padding: 8px 16px;
     font-family: var(--mono);
@@ -990,8 +990,8 @@ const css = `
     .footer { flex-direction: column; align-items: stretch; gap: 8px; }
     .footer > div { justify-content: center; }
 
-    /* QBO preview shorter on small screen */
-    .qbo-preview { height: 140px; }
+    /* OFX preview shorter on small screen */
+    .ofx-preview { height: 140px; }
 
     /* Add-row: stack into two rows */
     .add-row {
@@ -1190,7 +1190,7 @@ const DEMO_TRANSACTIONS = [
 const buildOFXFields = (tx) => {
   const dtposted = (tx.date || "").replace(/-/g, "") + "120000[+0:GMT]";
   const amount   = parseFloat(tx.amount || 0).toFixed(2);
-  const fitId    = tx.fit_id || `${(tx.date || "").replace(/-/g, "")}-pending`;
+  const fitId    = tx.fit_id || `${(tx.date || "").replace(/-/g, "")}${Math.random().toString(36).slice(2,10).toUpperCase()}`;
   return [
     ["TRNTYPE",  tx.type  || "OTHER"],
     ["DTPOSTED", dtposted],
@@ -1221,10 +1221,10 @@ function TypeBadge({ type }) {
 }
 
 function StatusDot({ tx, deleted, balanceDeltaMap }) {
-  if (deleted) return <span className="dot dot-del" title="Deleted" />;
+  if (deleted) return <span className="dot dot-del" title="Deleted" aria-label="Deleted" />;
   const reasons = flagReasons(tx, balanceDeltaMap);
-  if (reasons.length) return <span className="dot dot-warn" title={reasons.join(", ")} />;
-  return <span className="dot dot-ok" title="OK" />;
+  if (reasons.length) return <span className="dot dot-warn" title={reasons.join(", ")} aria-label={reasons.join("; ")} />;
+  return <span className="dot dot-ok" title="OK" aria-label="OK" />;
 }
 
 // ── Add Row Form ──────────────────────────────────────────────────────────────
@@ -1241,28 +1241,28 @@ function AddRowForm({ onAdd }) {
   return (
     <div className="add-row">
       <div className="add-field">
-        <div className="add-label">Date</div>
-        <input className="add-input" type="date" value={form.date} onChange={set("date")} />
+        <label className="add-label" htmlFor="add-date">Date</label>
+        <input id="add-date" className="add-input" type="date" value={form.date} onChange={set("date")} />
       </div>
       <div className="add-field">
-        <div className="add-label">Description</div>
-        <input className="add-input" placeholder="Merchant / memo" value={form.description} onChange={set("description")} />
+        <label className="add-label" htmlFor="add-description">Description</label>
+        <input id="add-description" className="add-input" placeholder="Merchant / memo" value={form.description} onChange={set("description")} />
       </div>
       <div className="add-field">
-        <div className="add-label">Category</div>
-        <input className="add-input" placeholder="e.g. Meals" value={form.category} onChange={set("category")} />
+        <label className="add-label" htmlFor="add-category">Category</label>
+        <input id="add-category" className="add-input" placeholder="e.g. Meals" value={form.category} onChange={set("category")} />
       </div>
       <div className="add-field">
-        <div className="add-label">Amount</div>
-        <input className="add-input" placeholder="-0.00" value={form.amount} onChange={set("amount")} />
+        <label className="add-label" htmlFor="add-amount">Amount</label>
+        <input id="add-amount" className="add-input" placeholder="-0.00" value={form.amount} onChange={set("amount")} />
       </div>
       <div className="add-field">
-        <div className="add-label">Balance</div>
-        <input className="add-input" placeholder="0.00" value={form.balance} onChange={set("balance")} />
+        <label className="add-label" htmlFor="add-balance">Balance</label>
+        <input id="add-balance" className="add-input" placeholder="0.00" value={form.balance} onChange={set("balance")} />
       </div>
       <div className="add-field">
-        <div className="add-label">Type</div>
-        <select className="add-input" value={form.type} onChange={set("type")}>
+        <label className="add-label" htmlFor="add-type">Type</label>
+        <select id="add-type" className="add-input" value={form.type} onChange={set("type")}>
           {TX_TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
       </div>
@@ -1283,7 +1283,7 @@ function SplitModal({ tx, onSplit, onClose }) {
   const [cat2,  setCat2]  = useState(tx.category || "");
 
   const amt2 = (total - parseFloat(amt1 || 0)).toFixed(2);
-  const sumOk = Math.abs(parseFloat(amt1 || 0) + parseFloat(amt2)) - Math.abs(total) < 0.005;
+  const sumOk = Math.round(parseFloat(amt1 || 0) * 100) + Math.round(parseFloat(amt2) * 100) === Math.round(total * 100);
 
   const handleSplit = () => {
     if (!sumOk) return;
@@ -1308,13 +1308,14 @@ function SplitModal({ tx, onSplit, onClose }) {
         <div className="split-label" style={{ marginBottom: 8 }}>Part 1</div>
         <div className="split-field">
           <div>
-            <div className="split-label">Description</div>
-            <input className="split-input" value={desc1} onChange={e => setDesc1(e.target.value)} />
+            <div className="split-label" id="split-desc1-label">Description</div>
+            <input className="split-input" aria-labelledby="split-desc1-label" value={desc1} onChange={e => setDesc1(e.target.value)} />
           </div>
           <div>
-            <div className="split-label">Amount</div>
+            <div className="split-label" id="split-amt1-label">Amount</div>
             <input
               className="split-input"
+              aria-labelledby="split-amt1-label"
               value={amt1}
               onChange={e => setAmt1(e.target.value)}
               style={{ color: isNeg ? "var(--red)" : "var(--green)" }}
@@ -1322,8 +1323,8 @@ function SplitModal({ tx, onSplit, onClose }) {
           </div>
         </div>
         <div style={{ marginBottom: 12 }}>
-          <div className="split-label">Category</div>
-          <input className="split-input" value={cat1} onChange={e => setCat1(e.target.value)} placeholder="e.g. Meals" />
+          <div className="split-label" id="split-cat1-label">Category</div>
+          <input className="split-input" aria-labelledby="split-cat1-label" value={cat1} onChange={e => setCat1(e.target.value)} placeholder="e.g. Meals" />
         </div>
 
         <hr className="split-divider" />
@@ -1332,13 +1333,14 @@ function SplitModal({ tx, onSplit, onClose }) {
         <div className="split-label" style={{ marginBottom: 8 }}>Part 2</div>
         <div className="split-field">
           <div>
-            <div className="split-label">Description</div>
-            <input className="split-input" value={desc2} onChange={e => setDesc2(e.target.value)} />
+            <div className="split-label" id="split-desc2-label">Description</div>
+            <input className="split-input" aria-labelledby="split-desc2-label" value={desc2} onChange={e => setDesc2(e.target.value)} />
           </div>
           <div>
-            <div className="split-label">Amount</div>
+            <div className="split-label" id="split-amt2-label">Amount (auto-calculated)</div>
             <input
               className="split-input"
+              aria-labelledby="split-amt2-label"
               value={amt2}
               readOnly
               style={{ color: isNeg ? "var(--red)" : "var(--green)", opacity: 0.7 }}
@@ -1346,8 +1348,8 @@ function SplitModal({ tx, onSplit, onClose }) {
           </div>
         </div>
         <div style={{ marginBottom: 12 }}>
-          <div className="split-label">Category</div>
-          <input className="split-input" value={cat2} onChange={e => setCat2(e.target.value)} placeholder="e.g. Travel" />
+          <div className="split-label" id="split-cat2-label">Category</div>
+          <input className="split-input" aria-labelledby="split-cat2-label" value={cat2} onChange={e => setCat2(e.target.value)} placeholder="e.g. Travel" />
         </div>
 
         <div className="split-total">
@@ -1381,9 +1383,9 @@ function ExportModal({ transactions, meta, onClose }) {
     setExporting(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/export", {
+      const res = await fetch("/api/export", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-API-Key": getStoredKey() },
         body: JSON.stringify({
           format:          exportFmt,
           bank:            meta?.bank || "Unknown",
@@ -1436,15 +1438,21 @@ function ExportModal({ transactions, meta, onClose }) {
         </div>
         <div className="format-grid">
           {[
-            { id: "ofx",  name: "OFX",  desc: "QuickBooks-compatible" },
-            { id: "qfx",  name: "QFX",  desc: "Quicken format" },
+            { id: "ofx",  name: "OFX",  desc: "QuickBooks®-compatible" },
+            { id: "qfx",  name: "QFX",  desc: "Quicken®-compatible format" },
             { id: "csv",  name: "CSV",  desc: "Spreadsheet import" },
           ].map(f => (
-            <div key={f.id} className={`format-card ${exportFmt === f.id ? "selected" : ""}`}
-              onClick={() => setExportFmt(f.id)}>
+            <button
+              key={f.id}
+              role="radio"
+              aria-checked={exportFmt === f.id}
+              className={`format-card ${exportFmt === f.id ? "selected" : ""}`}
+              onClick={() => setExportFmt(f.id)}
+              onKeyDown={e => (e.key === "Enter" || e.key === " ") && setExportFmt(f.id)}
+            >
               <div className="format-name">{f.name}</div>
               <div className="format-desc">{f.desc}</div>
-            </div>
+            </button>
           ))}
         </div>
         {error && (
@@ -1709,6 +1717,80 @@ function UpgradeModal({ onClose, onCheckout, busy, error }) {
   );
 }
 
+// ── Report parsing error modal ────────────────────────────────────────────────
+function ReportModal({ reportSubmitted, reportBusy, reportEmail, reportDesc, setReportEmail, setReportDesc, submitReport, onClose }) {
+  const trapRef = useFocusTrap(true);
+  return (
+    <div style={{
+      position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20,
+    }} role="presentation" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div ref={trapRef} style={{
+        background:"var(--ink-2)",border:"1px solid var(--border)",
+        borderRadius:14,padding:28,width:"100%",maxWidth:460,
+        display:"flex",flexDirection:"column",gap:16,
+      }} role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+        {reportSubmitted ? (
+          <>
+            <p style={{color:"var(--green)",fontWeight:700,margin:0,fontSize:17}}>✓ Report received</p>
+            <p style={{color:"var(--muted)",margin:0,fontSize:14}}>
+              Thanks — we'll investigate and improve the parser. If you left your email we'll follow up.
+            </p>
+            <button className="btn btn-primary" onClick={onClose}>Close</button>
+          </>
+        ) : (
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <h3 id="report-modal-title" style={{margin:0,color:"var(--white)",fontSize:16,fontWeight:700}}>🐛 Report a parsing issue</h3>
+              <button onClick={onClose} aria-label="Close report dialog" style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:18}}>×</button>
+            </div>
+            <p style={{color:"var(--muted)",margin:0,fontSize:13}}>
+              Something look wrong? Tell us what happened and we'll fix the parser.
+            </p>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <input
+                type="email"
+                id="report-email"
+                aria-label="Your email address for follow-up (optional)"
+                placeholder="Your email (optional, for follow-up)"
+                value={reportEmail}
+                onChange={e => setReportEmail(e.target.value)}
+                style={{
+                  background:"var(--ink-3)",border:"1px solid var(--border)",
+                  borderRadius:7,padding:"9px 12px",color:"var(--white)",
+                  fontSize:13,outline:"none",fontFamily:"var(--sans)",
+                }}
+              />
+              <textarea
+                id="report-desc"
+                aria-label="Issue description — describe what looks wrong"
+                placeholder="What's wrong? e.g. 'Wrong amounts on deposits', 'Missing 3 transactions', 'Dates are off by 1 day'…"
+                value={reportDesc}
+                onChange={e => setReportDesc(e.target.value)}
+                rows={4}
+                style={{
+                  background:"var(--ink-3)",border:"1px solid var(--border)",
+                  borderRadius:7,padding:"9px 12px",color:"var(--white)",
+                  fontSize:13,outline:"none",resize:"vertical",
+                  fontFamily:"var(--sans)",lineHeight:1.6,
+                }}
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              disabled={reportBusy || reportDesc.trim().length < 10}
+              onClick={submitReport}
+              style={{alignSelf:"flex-end"}}
+            >
+              {reportBusy ? "Sending…" : "Send report"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Onboarding checklist ──────────────────────────────────────────────────────
 function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
   const steps = [
@@ -1733,7 +1815,7 @@ function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
     },
     {
       title: "Download & Import",
-      sub: "Download OFX or QFX and import into QuickBooks Online or your accounting software.",
+      sub: "Download OFX or QFX and import into QuickBooks® Online or your accounting software.",
       done: false,
     },
   ];
@@ -2068,7 +2150,7 @@ export default function ReviewUI({
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Failed to parse PDF" }));
         if (res.status === 401) { setShowKeyModal(true); throw new Error("Invalid or missing API key."); }
-        if (res.status === 402 || res.status === 429) { setQuotaExceeded(true); throw new Error("quota"); }
+        if (res.status === 402) { setQuotaExceeded(true); throw new Error("quota"); }
         throw new Error(err.detail || "Failed to parse PDF");
       }
       const data = await res.json();
@@ -2119,7 +2201,7 @@ export default function ReviewUI({
         const res = await apiFetch("/api/preview", { method: "POST", body: formData });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: "Failed" }));
-          if (res.status === 402 || res.status === 429) { setQuotaExceeded(true); break; }
+          if (res.status === 402) { setQuotaExceeded(true); break; }
           allWarnings.push(`${pdfs[i].name}: ${err.detail || "Failed to parse"}`);
           continue;
         }
@@ -2248,75 +2330,22 @@ export default function ReviewUI({
 
       {/* ── Report parsing error modal ── */}
       {showReport && (
-        <div style={{
-          position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,
-          display:"flex",alignItems:"center",justifyContent:"center",padding:20,
-        }} onClick={e => e.target === e.currentTarget && setShowReport(false)}>
-          <div style={{
-            background:"var(--ink-2)",border:"1px solid var(--border)",
-            borderRadius:14,padding:28,width:"100%",maxWidth:460,
-            display:"flex",flexDirection:"column",gap:16,
-          }}>
-            {reportSubmitted ? (
-              <>
-                <p style={{color:"var(--green)",fontWeight:700,margin:0,fontSize:17}}>✓ Report received</p>
-                <p style={{color:"var(--muted)",margin:0,fontSize:14}}>
-                  Thanks — we'll investigate and improve the parser. If you left your email we'll follow up.
-                </p>
-                <button className="btn btn-primary" onClick={() => setShowReport(false)}>Close</button>
-              </>
-            ) : (
-              <>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <h3 style={{margin:0,color:"var(--white)",fontSize:16,fontWeight:700}}>🐛 Report a parsing issue</h3>
-                  <button onClick={() => setShowReport(false)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:18}}>×</button>
-                </div>
-                <p style={{color:"var(--muted)",margin:0,fontSize:13}}>
-                  Something look wrong? Tell us what happened and we'll fix the parser.
-                </p>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <input
-                    type="email"
-                    placeholder="Your email (optional, for follow-up)"
-                    value={reportEmail}
-                    onChange={e => setReportEmail(e.target.value)}
-                    style={{
-                      background:"var(--ink-3)",border:"1px solid var(--border)",
-                      borderRadius:7,padding:"9px 12px",color:"var(--white)",
-                      fontSize:13,outline:"none",fontFamily:"var(--sans)",
-                    }}
-                  />
-                  <textarea
-                    placeholder="What's wrong? e.g. 'Wrong amounts on deposits', 'Missing 3 transactions', 'Dates are off by 1 day'…"
-                    value={reportDesc}
-                    onChange={e => setReportDesc(e.target.value)}
-                    rows={4}
-                    style={{
-                      background:"var(--ink-3)",border:"1px solid var(--border)",
-                      borderRadius:7,padding:"9px 12px",color:"var(--white)",
-                      fontSize:13,outline:"none",resize:"vertical",
-                      fontFamily:"var(--sans)",lineHeight:1.6,
-                    }}
-                  />
-                </div>
-                <button
-                  className="btn btn-primary"
-                  disabled={reportBusy || reportDesc.trim().length < 10}
-                  onClick={submitReport}
-                  style={{alignSelf:"flex-end"}}
-                >
-                  {reportBusy ? "Sending…" : "Send report"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        <ReportModal
+          reportSubmitted={reportSubmitted}
+          reportBusy={reportBusy}
+          reportEmail={reportEmail}
+          reportDesc={reportDesc}
+          setReportEmail={setReportEmail}
+          setReportDesc={setReportDesc}
+          submitReport={submitReport}
+          onClose={() => setShowReport(false)}
+        />
       )}
 
       {/* Draft restore banner */}
       {draftBanner && (
-        <div className="draft-banner">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <div className="draft-banner" role="alert" aria-live="polite">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2.5l1.5 1.5a1 1 0 01-1.4 1.4l-1.8-1.8A1 1 0 017 8.5V6a1 1 0 011-1z"
               fill="currentColor" fillRule="evenodd" clipRule="evenodd"/>
           </svg>
@@ -2341,8 +2370,8 @@ export default function ReviewUI({
         <div className="topbar-brand">
           <span className="brand-dot" />
           <span style={{ color: "var(--green)" }}>Ledger</span>Flow
-          <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 6, lineHeight: 1.2, maxWidth: 160 }}>
-            Not affiliated with Intuit Inc.
+          <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 6, lineHeight: 1.4, maxWidth: 200 }}>
+            QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
           </span>
         </div>
         {pdfName && (
@@ -2416,7 +2445,7 @@ export default function ReviewUI({
           >
             {isDemo
               ? "Sign up to export →"
-              : flagged.length > 0 ? `${flagged.length} issues — fix first` : "Export to QBO →"
+              : flagged.length > 0 ? `${flagged.length} issues — fix first` : "Download OFX →"
             }
           </button>
         </div>
@@ -2424,7 +2453,7 @@ export default function ReviewUI({
 
       {/* Demo mode banner */}
       {isDemo && (
-        <div className="demo-banner">
+        <div className="demo-banner" role="status" aria-live="polite">
           <span className="demo-badge">Demo</span>
           <span className="demo-text">
             <strong>Sample Chase statement · Jan 2025.</strong>{" "}
@@ -2488,7 +2517,7 @@ export default function ReviewUI({
 
       {/* Reconciliation mismatch banner */}
       {reconciliation.status === "off" && (
-        <div style={{
+        <div role="alert" aria-live="assertive" style={{
           padding: "6px 20px",
           background: "var(--red-dim)",
           borderBottom: "1px solid var(--red)",
@@ -2581,7 +2610,11 @@ export default function ReviewUI({
             ) : (
               <div
                 className={`drop-zone ${isDragOver ? "dragover" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label="Upload PDF — click or press Enter to browse, or drag and drop files here"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={e => (e.key === "Enter" || e.key === " ") && fileInputRef.current?.click()}
                 onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={onDrop}
@@ -2658,14 +2691,14 @@ export default function ReviewUI({
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: 24 }} />
-                    <th style={{ width: 88 }} onClick={() => sort("date")}>Date{sortIcon("date")}</th>
-                    <th onClick={() => sort("description")}>Description{sortIcon("description")}</th>
-                    <th onClick={() => sort("category")} style={{ width: 120 }}>Category{sortIcon("category")}</th>
-                    <th style={{ width: 64 }}>Type</th>
-                    <th className="r" style={{ width: 96 }} onClick={() => sort("amount")}>Amount{sortIcon("amount")}</th>
-                    <th className="r col-balance" style={{ width: 88 }}>Balance</th>
-                    <th style={{ width: 72 }} />
+                    <th scope="col" style={{ width: 24 }} aria-label="Status" />
+                    <th scope="col" style={{ width: 88 }} onClick={() => sort("date")}>Date{sortIcon("date")}</th>
+                    <th scope="col" onClick={() => sort("description")}>Description{sortIcon("description")}</th>
+                    <th scope="col" onClick={() => sort("category")} style={{ width: 120 }}>Category{sortIcon("category")}</th>
+                    <th scope="col" style={{ width: 64 }}>Type</th>
+                    <th scope="col" className="r" style={{ width: 96 }} onClick={() => sort("amount")}>Amount{sortIcon("amount")}</th>
+                    <th scope="col" className="r col-balance" style={{ width: 88 }}>Balance</th>
+                    <th scope="col" style={{ width: 72 }} aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -2683,7 +2716,10 @@ export default function ReviewUI({
                       <tr
                         key={tx.id}
                         className={rowCls}
+                        tabIndex={0}
+                        aria-label={`${tx.date} ${tx.description} ${tx.amount}`}
                         onClick={() => setSelectedId(id => id === tx.id ? null : tx.id)}
+                        onKeyDown={e => (e.key === "Enter" || e.key === " ") && setSelectedId(id => id === tx.id ? null : tx.id)}
                         onMouseEnter={() => {
                           setHoveredId(tx.id);
                           if (tx.source_page) setCurrentPage(tx.source_page);
@@ -2790,18 +2826,18 @@ export default function ReviewUI({
           {/* Add row form */}
           {showAddRow && <AddRowForm onAdd={(tx) => { addTx(tx); setShowAddRow(false); }} />}
 
-          {/* QBO preview panel — shown when a row is selected */}
+          {/* OFX preview panel — shown when a row is selected */}
           {selectedId && (() => {
             const tx = transactions.find(t => t.id === selectedId);
             if (!tx) return null;
             const fields = buildOFXFields(tx);
             const isNeg  = parseFloat(tx.amount || 0) < 0;
             return (
-              <div className="qbo-preview">
-                <div className="qbo-preview-header">
-                  <span className="qbo-preview-label">OFX Field Preview</span>
-                  <span className="qbo-preview-fitid">{tx.fit_id || "FITID pending"}</span>
-                  <span className="qbo-preview-close" onClick={() => setSelectedId(null)} title="Close">×</span>
+              <div className="ofx-preview">
+                <div className="ofx-preview-header">
+                  <span className="ofx-preview-label">OFX Field Preview</span>
+                  <span className="ofx-preview-fitid">{tx.fit_id || "FITID pending"}</span>
+                  <button className="ofx-preview-close" aria-label="Close OFX preview" onClick={() => setSelectedId(null)}>×</button>
                 </div>
                 <div className="qbo-code">
                   <span className="qbo-tag">{"<STMTTRN>"}</span>{"\n"}

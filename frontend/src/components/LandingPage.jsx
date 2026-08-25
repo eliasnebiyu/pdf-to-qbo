@@ -379,7 +379,7 @@ export default function LandingPage() {
             </p>
             <p style={{ fontSize: 17, color: C.muted, margin: "0 0 36px", lineHeight: 1.7, maxWidth: 480 }}>
               Upload your PDF, edit every transaction inline, reconcile against real balances, then export.
-              The only converter that shows you exactly what it parsed — and lets you fix it before importing into QuickBooks.
+              The only converter that shows you exactly what it parsed — and lets you fix it before importing into QuickBooks®.
             </p>
 
             <div id="hero-cta">
@@ -416,7 +416,7 @@ export default function LandingPage() {
             {[
               { n: "01", title: "Upload your PDF", body: "Drop any bank statement — Chase, Fifth Third, Amex, 20 banks total. Batch upload multiple months at once." },
               { n: "02", title: "Review & edit inline", body: "Every transaction is editable. Fix misreads, split transactions, assign categories, reconcile balances." },
-              { n: "03", title: "Download & Import", body: "Download OFX, QFX, or CSV. Import into QuickBooks Online or your accounting software in two clicks." },
+              { n: "03", title: "Download & Import", body: "Download OFX, QFX, or CSV. Import into QuickBooks® Online or your accounting software in two clicks." },
             ].map(({ n, title, body }) => (
               <div key={n} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <span style={{ fontSize: 40, fontWeight: 900, color: C.accentBg, WebkitTextStroke: `2px ${C.accent}`, fontVariantNumeric: "tabular-nums" }}>{n}</span>
@@ -464,7 +464,7 @@ export default function LandingPage() {
           <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>20 native parsers</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 40px" }}>
             Don't see yours? The AI fallback parser handles any layout.{" "}
-            <a href="mailto:support@ledgerflow.io?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
+            <a href="mailto:support@ledgerflows.org?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
             {BANKS.map(b => (
@@ -564,7 +564,7 @@ export default function LandingPage() {
               ["Terms of Service", "/terms"],
               ["Privacy Policy", "/privacy"],
               ["API Docs", "/docs"],
-              ["support@ledgerflow.io", "mailto:support@ledgerflow.io"],
+              ["support@ledgerflows.org", "mailto:support@ledgerflows.org"],
             ].map(([label, href]) => (
               <a key={label} href={href} style={{ color: C.muted, fontSize: 13, textDecoration: "none" }}>{label}</a>
             ))}
@@ -573,7 +573,7 @@ export default function LandingPage() {
         <div style={{ ...s.container, marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
           <p style={{ color: C.muted, fontSize: 11, margin: 0, lineHeight: 1.6 }}>
             QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
-            LedgerFlow exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks and other accounting software.
+            LedgerFlow exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks® and other accounting software.
           </p>
           <p style={{ color: C.muted, fontSize: 11, margin: "8px 0 0", lineHeight: 1.6 }}>
             Your API key is stored in your browser's <code>localStorage</code> for convenience. It never leaves your device to third parties.

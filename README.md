@@ -1,6 +1,6 @@
-# PDF to QBO Converter
+# LedgerFlow — PDF to OFX/QFX/CSV Converter
 
-Convert bank statement PDFs to QuickBooks Online-compatible OFX/QFX/CSV files — with a full-featured web UI, API-key authentication, and per-key usage quotas.
+Convert bank statement PDFs to QuickBooks® Online-compatible OFX/QFX/CSV files — with a full-featured web UI, API-key authentication, and per-key usage quotas.
 
 ## Supported Banks (20 native parsers)
 
@@ -60,7 +60,7 @@ python cli.py convert statement.pdf --verbose
 python cli.py banks
 ```
 
-## Import into QuickBooks Online
+## Import into QuickBooks® Online
 
 1. In QBO: **Banking → Upload transactions**
 2. Select your `.ofx` or `.qfx` file
@@ -115,7 +115,7 @@ All endpoints are also available under the `/v1/` prefix (e.g. `/v1/convert`) fo
 
 ```bash
 curl -X POST http://localhost:8000/preview \
-  -H "X-API-Key: sk-your-key" \
+  -H "X-API-Key: lf_your-key-here" \
   -F "file=@statement.pdf" | jq .
 ```
 
@@ -123,7 +123,7 @@ curl -X POST http://localhost:8000/preview \
 
 ```bash
 curl -X POST "http://localhost:8000/convert?format=ofx" \
-  -H "X-API-Key: sk-your-key" \
+  -H "X-API-Key: lf_your-key-here" \
   -F "file=@statement.pdf" \
   --output statement.ofx
 ```
@@ -143,7 +143,7 @@ curl -X POST "http://localhost:8000/convert?format=ofx" \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_PATH` | `ledgerflow.db` | SQLite database file path |
+| `DB_PATH` | `data/api_keys.db` | SQLite database file path |
 | `STRIPE_SECRET_KEY` | — | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | — | Stripe webhook signing secret |
 | `STRIPE_PRICE_STARTER` | — | Stripe price ID for Starter plan |
@@ -235,3 +235,7 @@ class YourBankParser(BaseParser):
         stmt.assign_fit_ids()
         return stmt
 ```
+
+---
+
+> **Trademark notice:** QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc. OFX and QFX are open file formats compatible with QuickBooks® and other accounting software.
