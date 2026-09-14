@@ -313,12 +313,12 @@ def _tx_to_dict(tx: Transaction) -> dict:
 
 # ── Health & metadata  (no auth) ──────────────────────────────────────────────
 
-@app.get("/health")
+@app.get("/api/health")
 def health():
     return {"status": "ok", "service": "statably", "version": "1.2.0"}
 
 
-@app.get("/banks")
+@app.get("/api/banks")
 def banks():
     return {"supported_banks": list_supported_banks()}
 
@@ -330,7 +330,7 @@ class RegisterRequest(BaseModel):
     company_name: Optional[str] = None  # accountant / firm name (optional)
 
 
-@app.post("/auth/register", status_code=201)
+@app.post("/api/auth/register", status_code=201)
 @limiter.limit("3/hour")
 def register(request: Request, body: RegisterRequest):
     """
@@ -381,7 +381,7 @@ def _sanitize_report_field(value: str, max_len: int = 200) -> str:
     return cleaned[:max_len]
 
 
-@app.post("/report-error", status_code=200)
+@app.post("/api/report-error", status_code=200)
 @limiter.limit("10/hour")
 def report_error(request: Request, body: ErrorReportRequest):
     """
@@ -411,7 +411,7 @@ def report_error(request: Request, body: ErrorReportRequest):
 
 # ── Auth: usage info ──────────────────────────────────────────────────────────
 
-@app.get("/auth/usage")
+@app.get("/api/auth/usage")
 @limiter.limit("10/minute")
 def usage(request: Request, record: dict = Depends(verify_key_only)):
     """Return the current plan, usage counter, and remaining quota for the key."""
@@ -440,7 +440,7 @@ class CheckoutRequest(BaseModel):
     cancel_url:  str
 
 
-@app.post("/auth/checkout")
+@app.post("/api/auth/checkout")
 @limiter.limit("10/minute")
 def checkout(
     request: Request,
@@ -477,7 +477,7 @@ class RevokeRequest(BaseModel):
     confirm: bool = False  # must be True to prevent accidental revocation
 
 
-@app.post("/auth/revoke", status_code=200)
+@app.post("/api/auth/revoke", status_code=200)
 @limiter.limit("5/hour")
 def revoke(
     request: Request,
@@ -514,7 +514,7 @@ def revoke(
 
 # ── Auth: rotate key ──────────────────────────────────────────────────────────
 
-@app.post("/auth/rotate", status_code=200)
+@app.post("/api/auth/rotate", status_code=200)
 @limiter.limit("3/hour")
 def rotate(
     request: Request,
@@ -544,7 +544,7 @@ def rotate(
 
 # ── Stripe webhook  (called by Stripe, not the frontend) ─────────────────────
 
-@app.post("/stripe/webhook", include_in_schema=False)
+@app.post("/api/webhook/stripe", include_in_schema=False)
 async def stripe_webhook(request: Request):
     """
     Stripe posts events here.  The signature is verified against
@@ -562,7 +562,7 @@ async def stripe_webhook(request: Request):
 
 # ── Single-file conversion ────────────────────────────────────────────────────
 
-@app.post("/convert")
+@app.post("/api/convert")
 @limiter.limit("20/minute")
 async def convert(
     request:    Request,
@@ -659,7 +659,7 @@ async def convert(
 
 # ── Batch conversion ──────────────────────────────────────────────────────────
 
-@app.post("/batch")
+@app.post("/api/batch")
 @limiter.limit("10/minute")
 async def batch_convert(
     request:    Request,
@@ -799,7 +799,7 @@ async def batch_convert(
 
 # ── Batch preview (JSON, server-side dedup) ───────────────────────────────────
 
-@app.post("/batch-preview")
+@app.post("/api/batch-preview")
 @limiter.limit("10/minute")
 async def batch_preview(
     request:    Request,
@@ -917,7 +917,7 @@ async def batch_preview(
 
 # ── Statement preview (JSON) ──────────────────────────────────────────────────
 
-@app.post("/preview")
+@app.post("/api/preview")
 @limiter.limit("20/minute")
 async def preview(
     request:    Request,
@@ -1013,7 +1013,7 @@ class ExportRequest(BaseModel):
     transactions:    List[ExportTransaction]
 
 
-@app.post("/export")
+@app.post("/api/export")
 @limiter.limit("30/minute")
 async def export_transactions(
     request: Request,
