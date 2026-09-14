@@ -1,5 +1,5 @@
 """
-Core data models for LedgerFlow.
+Core data models for Statably.
 All financial data flows through these models to ensure consistency.
 """
 from __future__ import annotations

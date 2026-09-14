@@ -1,5 +1,5 @@
 /**
- * LedgerFlow — PDF Statement Review UI
+ * Statably — PDF Statement Review UI
  *
  * Dependencies (add to package.json):
  *   "react-pdf": "^7.7.0"
@@ -55,7 +55,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 // ─── API key storage ─────────────────────────────────────────────────────────
-const API_KEY_STORAGE = "ledgerflow_api_key";
+const API_KEY_STORAGE = "statably_api_key";
 const getStoredKey  = () => localStorage.getItem(API_KEY_STORAGE) || "";
 const saveStoredKey = (k) => localStorage.setItem(API_KEY_STORAGE, k.trim());
 
@@ -1468,7 +1468,7 @@ function ExportModal({ transactions, meta, onClose }) {
         </div>
         <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
           QuickBooks® is a registered trademark of Intuit Inc.
-          LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+          Statably is not affiliated with or endorsed by Intuit Inc.
         </p>
       </div>
     </div>
@@ -1826,7 +1826,7 @@ function OnboardingChecklist({ apiKey, onUpload, onAddKey }) {
     <div className="onboarding">
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32, marginBottom: 6 }}>📄</div>
-        <div className="onboarding-title">Get started with LedgerFlow</div>
+        <div className="onboarding-title">Get started with Statably</div>
         <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 16px" }}>
           Four steps to your first export
         </p>
@@ -1982,7 +1982,7 @@ export default function ReviewUI({
   }, [apiFetch]);
 
   // ── Session persistence (localStorage) ────────────────────────
-  const DRAFT_KEY = "ledgerflow_draft_v1";
+  const DRAFT_KEY = "statably_draft_v1";
   const [draftBanner, setDraftBanner] = useState(false);
 
   // On mount: check for a saved draft (skip in demo mode).
@@ -2369,9 +2369,9 @@ export default function ReviewUI({
       <div className="topbar">
         <div className="topbar-brand">
           <span className="brand-dot" />
-          <span style={{ color: "var(--green)" }}>Ledger</span>Flow
+          <span style={{ color: "var(--green)" }}>Stat</span>ably
           <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 6, lineHeight: 1.4, maxWidth: 200 }}>
-            QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+            QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc.
           </span>
         </div>
         {pdfName && (

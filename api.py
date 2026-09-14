@@ -1,5 +1,5 @@
 """
-LedgerFlow REST API  v1.2
+Statably REST API  v1.2
 =========================
 
 Public endpoints  (no API key required)
@@ -139,12 +139,12 @@ limiter = Limiter(key_func=_rate_key, headers_enabled=True)
 _IS_PROD = os.getenv("ENVIRONMENT", "development").lower() in ("production", "prod")
 
 app = FastAPI(
-    title="LedgerFlow",
+    title="Statably",
     description=(
         "Convert bank statement PDFs to OFX/QFX/CSV files compatible with "
         "QuickBooks® and other accounting software. "
         "QuickBooks® is a registered trademark of Intuit Inc. "
-        "LedgerFlow is not affiliated with or endorsed by Intuit Inc."
+        "Statably is not affiliated with or endorsed by Intuit Inc."
     ),
     version="1.2.0",
     # Disable auto-generated API docs in production to prevent schema reconnaissance.
@@ -315,7 +315,7 @@ def _tx_to_dict(tx: Transaction) -> dict:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "ledgerflow", "version": "1.2.0"}
+    return {"status": "ok", "service": "statably", "version": "1.2.0"}
 
 
 @app.get("/banks")

@@ -51,7 +51,7 @@ function Nav({ onGetKey }) {
     }}>
       <div style={{ ...s.container, display: "flex", alignItems: "center", height: 64 }}>
         <span style={{ fontSize: 20, fontWeight: 800, color: C.white, letterSpacing: -0.5 }}>
-          <span style={{ color: C.accent }}>Ledger</span>Flow
+          <span style={{ color: C.accent }}>Stat</span>ably
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
           <a href="#pricing" style={{ color: C.muted, textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
@@ -337,7 +337,7 @@ export default function LandingPage() {
 
   function handleSuccess(key, em) {
     // persist key so the app picks it up immediately
-    localStorage.setItem("ledgerflow_api_key", key);
+    localStorage.setItem("statably_api_key", key);
     setApiKey(key);
     setEmail(em);
     setShowForm(false);
@@ -375,7 +375,7 @@ export default function LandingPage() {
               in seconds
             </h1>
             <p style={{ fontSize: 11, color: C.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
-              QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+              QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc.
             </p>
             <p style={{ fontSize: 17, color: C.muted, margin: "0 0 36px", lineHeight: 1.7, maxWidth: 480 }}>
               Upload your PDF, edit every transaction inline, reconcile against real balances, then export.
@@ -464,7 +464,7 @@ export default function LandingPage() {
           <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>20 native parsers</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 40px" }}>
             Don't see yours? The AI fallback parser handles any layout.{" "}
-            <a href="mailto:support@ledgerflows.org?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
+            <a href="mailto:support@statably.org?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
             {BANKS.map(b => (
@@ -557,14 +557,14 @@ export default function LandingPage() {
       <footer style={{ borderTop: `1px solid ${C.border}`, padding: "32px 24px" }}>
         <div style={{ ...s.container, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <span style={{ color: C.muted, fontSize: 14 }}>
-            <span style={{ color: C.accent, fontWeight: 800 }}>Ledger</span>Flow · Built for accountants
+            <span style={{ color: C.accent, fontWeight: 800 }}>Stat</span>ably · Built for accountants
           </span>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
             {[
               ["Terms of Service", "/terms"],
               ["Privacy Policy", "/privacy"],
               ["API Docs", "/docs"],
-              ["support@ledgerflows.org", "mailto:support@ledgerflows.org"],
+              ["support@statably.org", "mailto:support@statably.org"],
             ].map(([label, href]) => (
               <a key={label} href={href} style={{ color: C.muted, fontSize: 13, textDecoration: "none" }}>{label}</a>
             ))}
@@ -572,8 +572,8 @@ export default function LandingPage() {
         </div>
         <div style={{ ...s.container, marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
           <p style={{ color: C.muted, fontSize: 11, margin: 0, lineHeight: 1.6 }}>
-            QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
-            LedgerFlow exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks® and other accounting software.
+            QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc.
+            Statably exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks® and other accounting software.
           </p>
           <p style={{ color: C.muted, fontSize: 11, margin: "8px 0 0", lineHeight: 1.6 }}>
             Your API key is stored in your browser's <code>localStorage</code> for convenience. It never leaves your device to third parties.

@@ -18,8 +18,8 @@ import os
 log = logging.getLogger(__name__)
 
 _RESEND_KEY  = os.getenv("RESEND_API_KEY", "")
-_FROM        = os.getenv("RESEND_FROM", "LedgerFlow <noreply@ledgerflows.org>")
-_APP_URL     = os.getenv("APP_URL", "https://ledgerflows.org")
+_FROM        = os.getenv("RESEND_FROM", "Statably <noreply@statably.org>")
+_APP_URL     = os.getenv("APP_URL", "https://statably.org")
 
 
 def _client():
@@ -56,7 +56,7 @@ def send_api_key_email(email: str, api_key: str, plan: str = "free") -> bool:
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;border:1px solid #e2e8f0;">
 
     <h1 style="font-size:22px;font-weight:800;color:#0b1120;margin:0 0 6px;">
-      <span style="color:#10b981;">LedgerFlow</span>
+      <span style="color:#10b981;">Statably</span>
     </h1>
     <p style="color:#64748b;font-size:13px;margin:0 0 28px;">Bank statement converter for QuickBooks®</p>
 
@@ -106,7 +106,7 @@ def send_api_key_email(email: str, api_key: str, plan: str = "free") -> bool:
         resend.Emails.send({
             "from":    _FROM,
             "to":      [email],
-            "subject": "Your LedgerFlow API key",
+            "subject": "Your Statably API key",
             "html":    html,
         })
         log.info("Welcome email sent to %s", email)
@@ -130,7 +130,7 @@ def send_parsing_error_report(
     if resend is None:
         return False
 
-    support = os.getenv("SUPPORT_EMAIL", "support@ledgerflows.org")
+    support = os.getenv("SUPPORT_EMAIL", "support@statably.org")
     body    = f"""
 Parsing error report from {user_email}
 

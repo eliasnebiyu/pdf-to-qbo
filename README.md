@@ -1,4 +1,4 @@
-# LedgerFlow — PDF to OFX/QFX/CSV Converter
+# Statably — PDF to OFX/QFX/CSV Converter
 
 Convert bank statement PDFs to QuickBooks® Online-compatible OFX/QFX/CSV files — with a full-featured web UI, API-key authentication, and per-key usage quotas.
 
@@ -238,4 +238,4 @@ class YourBankParser(BaseParser):
 
 ---
 
-> **Trademark notice:** QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc. OFX and QFX are open file formats compatible with QuickBooks® and other accounting software.
+> **Trademark notice:** QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc. OFX and QFX are open file formats compatible with QuickBooks® and other accounting software.

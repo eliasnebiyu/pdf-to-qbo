@@ -49,7 +49,7 @@ export default function PrivacyPage() {
       <nav style={{ borderBottom: `1px solid ${C.border}`, padding: "0 24px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", alignItems: "center", height: 60, gap: 16 }}>
           <button onClick={() => navigate("/")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 18, cursor: "pointer", letterSpacing: -0.5 }}>
-            <span style={{ color: C.accent }}>Ledger</span><span style={{ color: C.white }}>Flow</span>
+            <span style={{ color: C.accent }}>Stat</span><span style={{ color: C.white }}>ably</span>
           </button>
           <span style={{ color: C.muted, fontSize: 14 }}>/ Privacy Policy</span>
         </div>
@@ -61,9 +61,9 @@ export default function PrivacyPage() {
         <p style={{ color: C.muted, fontSize: 14, margin: "0 0 48px" }}>Effective date: {EFFECTIVE}</p>
 
         <Section title="Overview">
-          <P>LedgerFlow is built for accountants and bookkeepers who handle sensitive financial documents. We take privacy seriously. This policy explains exactly what we collect, why, and how long we keep it.</P>
+          <P>Statably is built for accountants and bookkeepers who handle sensitive financial documents. We take privacy seriously. This policy explains exactly what we collect, why, and how long we keep it.</P>
           <P><strong style={{ color: C.white }}>Short version:</strong> We do not store the contents of your bank statement PDFs. We never sell your data. We never train AI models on your documents.</P>
-          <P><strong style={{ color: C.white }}>Controller:</strong> LedgerFlow Inc., a Delaware corporation. Registered office: 651 N Broad St, Suite 201, Middletown, DE 19709, United States. For all privacy requests, contact <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> with the subject "Privacy Request". You may also write to us at the registered address above.</P>
+          <P><strong style={{ color: C.white }}>Controller:</strong> Statably Inc., a Delaware corporation. Registered office: 651 N Broad St, Suite 201, Middletown, DE 19709, United States. For all privacy requests, contact <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a> with the subject "Privacy Request". You may also write to us at the registered address above.</P>
         </Section>
 
         <Section title="1. Information We Collect">
@@ -101,7 +101,7 @@ export default function PrivacyPage() {
             ["PDF content (in-memory only)", "Performance of a contract (Art. 6(1)(b)) — processing your uploaded file is the core service"],
             ["Billing data (via Stripe)", "Performance of a contract (Art. 6(1)(b)) — processing your payment for a paid subscription"],
           ]} />
-          <P>Where we rely on legitimate interests, you have the right to object to that processing. To exercise this right, contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
+          <P>Where we rely on legitimate interests, you have the right to object to that processing. To exercise this right, contact us at <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a>.</P>
         </Section>
 
         <Section title="3. PDF Processing and AI Fallback">
@@ -150,7 +150,7 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}>No persistent storage of PDF contents or parsed transaction data</li>
             <li style={{ marginBottom: 6 }}>Rate limiting and abuse detection on all endpoints</li>
           </ul>
-          <P>No method of transmission over the internet is 100% secure. If you discover a security vulnerability, please disclose it responsibly to <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
+          <P>No method of transmission over the internet is 100% secure. If you discover a security vulnerability, please disclose it responsibly to <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a>.</P>
         </Section>
 
         <Section title="6. Your Rights">
@@ -162,7 +162,7 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Port</strong> your data in a machine-readable format</li>
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Object</strong> to certain processing activities</li>
           </ul>
-          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>. We will respond within 30 days.</P>
+          <P>To exercise any of these rights, email us at <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a>. We will respond within 30 days.</P>
         </Section>
 
         <Section title="7. Data Retention">
@@ -177,7 +177,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="8. Cookies and Tracking">
-          <P>LedgerFlow does not use advertising cookies or third-party tracking pixels. The Service uses:</P>
+          <P>Statably does not use advertising cookies or third-party tracking pixels. The Service uses:</P>
           <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
             <li style={{ marginBottom: 6 }}>
               <strong style={{ color: C.white }}>localStorage</strong> (browser) to store your API key and session draft — this data never leaves your device. By using the Service you acknowledge that these values are stored locally; you can clear them at any time via your browser's developer tools or settings.
@@ -190,7 +190,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="9. Children's Privacy">
-          <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
+          <P>The Service is not directed to individuals under 16 years of age. We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, contact us at <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a>.</P>
         </Section>
 
         <Section title="10. California Privacy Rights (CCPA / CPRA)">
@@ -202,11 +202,11 @@ export default function PrivacyPage() {
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Opt Out of Sale or Sharing:</strong> We do <em>not</em> sell, share, or disclose your personal information to third parties for cross-context behavioural advertising. There is nothing to opt out of, but you may confirm this in writing by emailing us.</li>
             <li style={{ marginBottom: 6 }}><strong style={{ color: C.white }}>Right to Non-Discrimination:</strong> We will not discriminate against you for exercising any of your CCPA rights.</li>
           </ul>
-          <P>To exercise any of these rights, email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> with the subject line "California Privacy Request". We will respond within 45 days.</P>
-          <P><strong style={{ color: C.white }}>Do Not Sell or Share My Personal Information.</strong> We do not sell or share your personal information as defined by the CCPA/CPRA. If you wish to confirm this in writing or wish to opt out of any future sale or sharing, use the link below or email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a>.</P>
+          <P>To exercise any of these rights, email us at <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a> with the subject line "California Privacy Request". We will respond within 45 days.</P>
+          <P><strong style={{ color: C.white }}>Do Not Sell or Share My Personal Information.</strong> We do not sell or share your personal information as defined by the CCPA/CPRA. If you wish to confirm this in writing or wish to opt out of any future sale or sharing, use the link below or email us at <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a>.</P>
           <div style={{ margin: "12px 0" }}>
             <a
-              href="mailto:support@ledgerflows.org?subject=CCPA%20Opt-Out%20Request"
+              href="mailto:support@statably.org?subject=CCPA%20Opt-Out%20Request"
               style={{
                 display: "inline-block",
                 padding: "8px 16px",
@@ -226,7 +226,7 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="11. International Data Transfers (GDPR)">
-          <P>LedgerFlow Inc. is based in the United States. If you are located in the European Economic Area (EEA) or United Kingdom, your personal data may be transferred to and processed in the United States, which may not provide the same level of data protection as your home jurisdiction.</P>
+          <P>Statably Inc. is based in the United States. If you are located in the European Economic Area (EEA) or United Kingdom, your personal data may be transferred to and processed in the United States, which may not provide the same level of data protection as your home jurisdiction.</P>
           <P>We take the following steps to ensure adequate protection when transferring data internationally:</P>
           <ul style={{ margin: "0 0 12px", paddingLeft: 24, color: C.text }}>
             <li style={{ marginBottom: 6 }}>
@@ -245,7 +245,7 @@ export default function PrivacyPage() {
               <strong style={{ color: C.white }}>Resend (transactional email):</strong> Processes email address and delivery metadata in the US. Resend provides SCCs under its Data Processing Agreement.
             </li>
           </ul>
-          <P>To request a copy of our Data Processing Addendum (DPA) or the applicable Standard Contractual Clauses, email <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a> with the subject "DPA Request".</P>
+          <P>To request a copy of our Data Processing Addendum (DPA) or the applicable Standard Contractual Clauses, email <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a> with the subject "DPA Request".</P>
           <P>If you are an EEA or UK resident and believe we have not adequately addressed a privacy concern, you have the right to lodge a complaint with your local data protection authority.</P>
         </Section>
 
@@ -255,7 +255,7 @@ export default function PrivacyPage() {
 
         <Section title="13. Contact">
           <P>Questions or concerns about this Privacy Policy?<br />
-          Email us at <a href="mailto:support@ledgerflows.org" style={{ color: C.accent }}>support@ledgerflows.org</a></P>
+          Email us at <a href="mailto:support@statably.org" style={{ color: C.accent }}>support@statably.org</a></P>
         </Section>
       </div>
 
@@ -270,7 +270,7 @@ export default function PrivacyPage() {
           ))}
         </div>
         <p style={{ color: C.muted, fontSize: 11, margin: "16px 0 0", lineHeight: 1.6 }}>
-          QuickBooks® is a registered trademark of Intuit Inc. LedgerFlow is not affiliated with or endorsed by Intuit Inc.
+          QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc.
         </p>
       </footer>
     </div>
