@@ -56,7 +56,7 @@ from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -207,7 +207,7 @@ class _CSPMiddleware(_BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self' https://*.sentry.io https://api.stripe.com; "
+            "connect-src 'self' https://*.sentry.io https://api.stripe.com https://oauth.platform.intuit.com; "
             "frame-src https://js.stripe.com; "
             "worker-src blob:; "
             "object-src 'none'; "
@@ -1088,6 +1088,178 @@ async def export_transactions(
             "X-Transaction-Count": str(len(txns)),
         },
     )
+
+
+# ── QuickBooks Online OAuth + push ───────────────────────────────────────────
+#
+# Flow:
+#   1. GET  /api/auth/qbo/connect   → return auth URL for the frontend to navigate to
+#   2. GET  /api/auth/qbo/callback  → Intuit redirects here; backend stores tokens,
+#                                     redirects browser to /?qbo=connected
+#   3. GET  /api/auth/qbo/status    → check whether QBO is connected for this key
+#   4. DELETE /api/auth/qbo/disconnect → revoke + delete tokens
+#   5. POST /api/qbo/push           → push reviewed transactions to the QBO company
+
+from src.auth import (
+    delete_qbo_tokens,
+    get_qbo_tokens,
+    store_qbo_tokens,
+    update_qbo_tokens,
+)
+import src.qbo as _qbo_mod
+
+
+@app.get("/api/auth/qbo/connect")
+@limiter.limit("10/minute")
+def qbo_connect(request: Request, record: dict = Depends(verify_key_only)):
+    """
+    Return the Intuit OAuth 2.0 authorization URL for this API key.
+
+    The frontend should navigate (window.location.href) to auth_url.
+    After the user grants access Intuit will redirect to INTUIT_REDIRECT_URI
+    (GET /api/auth/qbo/callback) and the backend stores the tokens.
+    """
+    key_hash = record["key"]
+    auth_url = _qbo_mod.get_auth_url(key_hash)
+    return {"auth_url": auth_url, "environment": _qbo_mod._ENV}
+
+
+@app.get("/api/auth/qbo/callback", include_in_schema=False)
+async def qbo_callback(
+    request: Request,
+    code:    Optional[str] = Query(default=None),
+    state:   Optional[str] = Query(default=None),
+    realmId: Optional[str] = Query(default=None),
+    error:   Optional[str] = Query(default=None),
+):
+    """
+    Intuit posts an authorization code here.  The backend exchanges it for
+    tokens, stores them against the API key (identified via CSRF state),
+    and redirects the browser back to the SPA.
+    """
+    if error:
+        return RedirectResponse(url=f"/?qbo=error&reason={error}", status_code=302)
+
+    if not code or not state or not realmId:
+        return RedirectResponse(url="/?qbo=error&reason=missing_params", status_code=302)
+
+    try:
+        key_hash   = _qbo_mod.validate_state(state)
+        token_data = _qbo_mod.exchange_code(code, realmId)
+        store_qbo_tokens(key_hash, token_data)
+        return RedirectResponse(url="/?qbo=connected", status_code=302)
+    except HTTPException as exc:
+        reason = str(exc.detail)[:120].replace(" ", "+")
+        return RedirectResponse(url=f"/?qbo=error&reason={reason}", status_code=302)
+
+
+@app.get("/api/auth/qbo/status")
+@limiter.limit("20/minute")
+def qbo_status(request: Request, record: dict = Depends(verify_key_only)):
+    """
+    Check whether QuickBooks Online is connected for this API key.
+
+    Returns {connected: true, realm_id, environment} or {connected: false}.
+    The refresh token expiry is checked; a very old token is reported as disconnected.
+    """
+    from datetime import datetime, timezone
+    tokens = get_qbo_tokens(record["key"])
+    if not tokens:
+        return {"connected": False}
+    rt_exp = datetime.fromisoformat(tokens["refresh_token_expires_at"])
+    if datetime.now(timezone.utc) > rt_exp:
+        return {"connected": False, "reason": "refresh_token_expired"}
+    return {
+        "connected":                  True,
+        "realm_id":                   tokens["realm_id"],
+        "environment":                _qbo_mod._ENV,
+        "refresh_token_expires_at":   tokens["refresh_token_expires_at"],
+    }
+
+
+@app.delete("/api/auth/qbo/disconnect")
+@limiter.limit("10/minute")
+def qbo_disconnect(request: Request, record: dict = Depends(verify_key_only)):
+    """
+    Revoke the QuickBooks tokens at Intuit and remove them from the database.
+    After this call the user must re-authorize to push transactions.
+    """
+    tokens = get_qbo_tokens(record["key"])
+    if tokens:
+        _qbo_mod.revoke(tokens["refresh_token"])
+        delete_qbo_tokens(record["key"])
+    return {"disconnected": True}
+
+
+class QBOPushRequest(BaseModel):
+    transactions: List[ExportTransaction]
+    bank:         str = "Unknown"
+    account_id:   str = "unknown"
+    account_type: str = "CHECKING"
+
+
+@app.post("/api/qbo/push")
+@limiter.limit("10/minute")
+async def qbo_push(
+    request: Request,
+    req:     QBOPushRequest,
+    record:  dict = Depends(verify_key_only),
+):
+    """
+    Push reviewed transactions directly to the connected QuickBooks Online company.
+
+    - Negative amounts → Purchase (debit / expense in bank register)
+    - Positive amounts → Deposit  (credit / income in bank register)
+
+    Requires a connected QBO account (GET /api/auth/qbo/connect to authorise).
+    Does NOT consume conversion quota — no PDF is parsed here.
+    """
+    tokens = get_qbo_tokens(record["key"])
+    if not tokens:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "QuickBooks® is not connected for this API key. "
+                "Connect via GET /api/auth/qbo/connect first."
+            ),
+        )
+
+    # Check refresh token expiry before attempting any QBO call
+    from datetime import datetime, timezone
+    rt_exp = datetime.fromisoformat(tokens["refresh_token_expires_at"])
+    if datetime.now(timezone.utc) > rt_exp:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "QuickBooks® refresh token has expired (101-day limit). "
+                "Please reconnect via GET /api/auth/qbo/connect."
+            ),
+        )
+
+    txn_dicts = [
+        {
+            "date":        tx.date,
+            "description": tx.description,
+            "amount":      tx.amount,
+        }
+        for tx in req.transactions
+    ]
+
+    result, refreshed = _qbo_mod.push_transactions(
+        token_record=tokens,
+        transactions=txn_dicts,
+        bank_name=req.bank,
+    )
+
+    # Persist refreshed tokens if the access token was auto-renewed
+    if refreshed:
+        update_qbo_tokens(record["key"], refreshed)
+
+    # Audit-log the push (free — quota not consumed)
+    raw_key = request.headers.get("x-api-key", "").strip()
+    log_conversion(raw_key, req.bank, "qbo-push", len(req.transactions))
+
+    return result
 
 
 # ── /v1/ versioned API router ─────────────────────────────────────────────────

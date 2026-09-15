@@ -610,6 +610,55 @@ const css = `
   .format-desc { font-size: 11px; color: var(--muted); margin-top: 4px; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+  /* ── QBO connect section inside export modal ─────────────────── */
+  .qbo-section {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--ink-3);
+  }
+  .qbo-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .qbo-section-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .qbo-status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    flex-shrink: 0;
+  }
+  .qbo-status-dot.disconnected { background: var(--muted); box-shadow: none; }
+  .qbo-push-result {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .qbo-push-result.success { background: var(--green-dim); color: var(--green); }
+  .qbo-push-result.error   { background: var(--red-dim);   color: var(--red); }
+  .btn-qbo {
+    background: #2CA01C;
+    border-color: #2CA01C;
+    color: #fff;
+    font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .btn-qbo:hover { background: #38b822; border-color: #38b822; color: #fff; }
+  .btn-qbo:disabled { background: var(--ink-3); border-color: var(--border); color: var(--muted); cursor: not-allowed; }
+
   /* ── Split modal ──────────────────────────────────────────────── */
   .split-field {
     display: grid;
@@ -1379,6 +1428,79 @@ function ExportModal({ transactions, meta, onClose }) {
   const [error,      setError]      = useState(null);
   const active = transactions.filter(t => !t._deleted);
 
+  // ── QBO state ─────────────────────────────────────────────────
+  const [qboConnected,  setQboConnected]  = useState(null); // null = loading
+  const [qboPushing,    setQboPushing]    = useState(false);
+  const [qboPushResult, setQboPushResult] = useState(null); // {pushed, errors, ...}
+  const [qboError,      setQboError]      = useState(null);
+
+  // Check QBO connection status on mount
+  useEffect(() => {
+    const key = getStoredKey();
+    if (!key) { setQboConnected(false); return; }
+    fetch("/api/auth/qbo/status", { headers: { "X-API-Key": key } })
+      .then(r => r.ok ? r.json() : { connected: false })
+      .then(d => setQboConnected(d.connected))
+      .catch(() => setQboConnected(false));
+  }, []);
+
+  const handleQboConnect = async () => {
+    const key = getStoredKey();
+    if (!key) return;
+    try {
+      const res  = await fetch("/api/auth/qbo/connect", { headers: { "X-API-Key": key } });
+      const data = await res.json();
+      if (data.auth_url) {
+        // Navigate to Intuit OAuth page; callback will redirect back to /?qbo=connected
+        window.location.href = data.auth_url;
+      } else {
+        setQboError(data.detail || "Could not get QuickBooks auth URL.");
+      }
+    } catch (err) {
+      setQboError(err.message);
+    }
+  };
+
+  const handleQboDisconnect = async () => {
+    const key = getStoredKey();
+    if (!key) return;
+    await fetch("/api/auth/qbo/disconnect", { method: "DELETE", headers: { "X-API-Key": key } });
+    setQboConnected(false);
+    setQboPushResult(null);
+  };
+
+  const handleQboPush = async () => {
+    setQboPushing(true);
+    setQboPushResult(null);
+    setQboError(null);
+    try {
+      const res = await fetch("/api/qbo/push", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": getStoredKey() },
+        body: JSON.stringify({
+          bank:         meta?.bank || "Unknown",
+          account_id:   meta?.account_id || "unknown",
+          account_type: meta?.account_type || "CHECKING",
+          transactions: active.map(t => ({
+            date:        t.date,
+            description: t.description,
+            amount:      parseFloat(t.amount),
+            balance:     t.balance ? parseFloat(t.balance) : null,
+            type:        t.type,
+            category:    t.category || null,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Push failed");
+      setQboPushResult(data);
+    } catch (err) {
+      setQboError(err.message);
+    } finally {
+      setQboPushing(false);
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     setError(null);
@@ -1466,6 +1588,74 @@ function ExportModal({ transactions, meta, onClose }) {
             {exporting ? "Exporting…" : `Download ${exportFmt.toUpperCase()}`}
           </button>
         </div>
+
+        {/* ── Direct QuickBooks® push section ── */}
+        <div className="qbo-section">
+          <div className="qbo-section-title">
+            <span className={`qbo-status-dot${qboConnected ? "" : " disconnected"}`} />
+            Push directly to QuickBooks®
+            {qboConnected === null && (
+              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 400 }}>checking…</span>
+            )}
+            {qboConnected && (
+              <button
+                className="btn btn-icon"
+                style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px" }}
+                onClick={handleQboDisconnect}
+                title="Disconnect QuickBooks®"
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+
+          {!qboConnected && qboConnected !== null && (
+            <>
+              <div className="qbo-section-sub">
+                Connect your QuickBooks Online account and push {active.length} transactions
+                directly into your register — no file import needed.
+              </div>
+              <button className="btn btn-qbo" onClick={handleQboConnect}>
+                <svg width="16" height="16" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                  <circle cx="20" cy="20" r="20" fill="#2CA01C"/>
+                  <text x="20" y="28" textAnchor="middle" fontSize="22" fontWeight="bold" fill="#fff">Q</text>
+                </svg>
+                Connect to QuickBooks®
+              </button>
+            </>
+          )}
+
+          {qboConnected && !qboPushResult && (
+            <>
+              <div className="qbo-section-sub">
+                QuickBooks® is connected. Click below to push {active.length} transactions
+                directly into your register as Purchases and Deposits.
+              </div>
+              <button
+                className="btn btn-qbo"
+                onClick={handleQboPush}
+                disabled={qboPushing || active.length === 0}
+              >
+                {qboPushing ? "Pushing…" : `Push ${active.length} transactions to QuickBooks®`}
+              </button>
+            </>
+          )}
+
+          {qboPushResult && (
+            <div className={`qbo-push-result ${qboPushResult.errors > 0 ? "error" : "success"}`}>
+              ✓ {qboPushResult.pushed} pushed
+              {qboPushResult.skipped > 0 && `, ${qboPushResult.skipped} skipped (zero)`}
+              {qboPushResult.errors > 0 && ` · ${qboPushResult.errors} error(s): ${(qboPushResult.error_sample || []).join("; ")}`}
+            </div>
+          )}
+
+          {qboError && (
+            <div style={{ color: "var(--red)", fontSize: 12, marginTop: 8, fontFamily: "var(--mono)" }}>
+              ⚠ {qboError}
+            </div>
+          )}
+        </div>
+
         <p style={{ fontSize: 10, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
           QuickBooks® is a registered trademark of Intuit Inc.
           Statably is not affiliated with or endorsed by Intuit Inc.
@@ -1906,6 +2096,22 @@ export default function ReviewUI({
   const [apiKey,       setApiKey]       = useState(getStoredKey);
   const [showKeyModal, setShowKeyModal] = useState(!getStoredKey() && !isDemo);
   const [usage,        setUsage]        = useState(null); // { plan, plan_label, used, remaining, limit }
+
+  // ── QBO OAuth callback toast ────────────────────────────────────
+  // Intuit redirects back to /?qbo=connected or /?qbo=error after OAuth.
+  const [qboToast, setQboToast] = useState(null); // null | {type: "success"|"error", msg}
+  useEffect(() => {
+    const qbo    = searchParams.get("qbo");
+    const reason = searchParams.get("reason");
+    if (qbo === "connected") {
+      setQboToast({ type: "success", msg: "QuickBooks® connected! Open Export to push transactions." });
+      // Clean up URL without re-render
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (qbo === "error") {
+      setQboToast({ type: "error", msg: `QuickBooks® connection failed: ${reason || "unknown error"}` });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   // ── Report parsing error ────────────────────────────────────────
   const [showReport,      setShowReport]      = useState(false);
@@ -2362,6 +2568,31 @@ export default function ReviewUI({
             onClick={discardDraft}>
             Discard
           </button>
+        </div>
+      )}
+
+      {/* QBO OAuth result toast */}
+      {qboToast && (
+        <div
+          role="alert"
+          aria-live="polite"
+          style={{
+            position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+            zIndex: 200, display: "flex", alignItems: "center", gap: 10,
+            background: qboToast.type === "success" ? "var(--green-dim)" : "var(--red-dim)",
+            border: `1px solid ${qboToast.type === "success" ? "var(--green)" : "var(--red)"}`,
+            color: qboToast.type === "success" ? "var(--green)" : "var(--red)",
+            borderRadius: 8, padding: "12px 20px", fontSize: 13, fontFamily: "var(--sans)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.5)", maxWidth: 480,
+          }}
+        >
+          {qboToast.type === "success" ? "✓" : "⚠"} {qboToast.msg}
+          <button
+            className="btn btn-icon"
+            style={{ marginLeft: 8, color: "inherit" }}
+            onClick={() => setQboToast(null)}
+            aria-label="Dismiss"
+          >×</button>
         </div>
       )}
 

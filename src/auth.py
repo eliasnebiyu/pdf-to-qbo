@@ -93,6 +93,16 @@ def _ensure_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_log_key
                 ON conversion_log (key_hash);
+            CREATE TABLE IF NOT EXISTS qbo_tokens (
+                key_hash                  TEXT PRIMARY KEY,
+                realm_id                  TEXT NOT NULL,
+                access_token              TEXT NOT NULL,
+                refresh_token             TEXT NOT NULL,
+                access_token_expires_at   TEXT NOT NULL,
+                refresh_token_expires_at  TEXT NOT NULL,
+                created_at                TEXT NOT NULL,
+                updated_at                TEXT NOT NULL
+            );
         """)
 
 
@@ -492,3 +502,91 @@ def verify_key_only(api_key: str = Security(_KEY_HEADER)) -> dict:
             ),
         )
     return _maybe_reset_period(record)
+
+
+# ── QBO token storage ──────────────────────────────────────────────────────────
+
+def store_qbo_tokens(key_hash: str, token_data: dict) -> None:
+    """
+    Upsert the QBO OAuth tokens for the given key_hash.
+
+    token_data must contain: realm_id, access_token, refresh_token,
+    access_token_expires_at, refresh_token_expires_at.
+    """
+    _ensure_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO qbo_tokens
+                (key_hash, realm_id, access_token, refresh_token,
+                 access_token_expires_at, refresh_token_expires_at,
+                 created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(key_hash) DO UPDATE SET
+                realm_id                 = excluded.realm_id,
+                access_token             = excluded.access_token,
+                refresh_token            = excluded.refresh_token,
+                access_token_expires_at  = excluded.access_token_expires_at,
+                refresh_token_expires_at = excluded.refresh_token_expires_at,
+                updated_at               = excluded.updated_at
+            """,
+            (
+                key_hash,
+                token_data["realm_id"],
+                token_data["access_token"],
+                token_data["refresh_token"],
+                token_data["access_token_expires_at"],
+                token_data["refresh_token_expires_at"],
+                now,
+                now,
+            ),
+        )
+
+
+def get_qbo_tokens(key_hash: str) -> Optional[dict]:
+    """Return the stored QBO token record for key_hash, or None."""
+    _ensure_db()
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM qbo_tokens WHERE key_hash = ?", (key_hash,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_qbo_tokens(key_hash: str, partial: dict) -> None:
+    """
+    Update only the fields present in partial (used after a token refresh).
+
+    partial may contain: access_token, access_token_expires_at,
+    refresh_token, refresh_token_expires_at.
+    """
+    _ensure_db()
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE qbo_tokens SET
+                access_token             = ?,
+                access_token_expires_at  = ?,
+                refresh_token            = COALESCE(?, refresh_token),
+                refresh_token_expires_at = COALESCE(?, refresh_token_expires_at),
+                updated_at               = ?
+            WHERE key_hash = ?
+            """,
+            (
+                partial["access_token"],
+                partial["access_token_expires_at"],
+                partial.get("refresh_token"),
+                partial.get("refresh_token_expires_at"),
+                now,
+                key_hash,
+            ),
+        )
+
+
+def delete_qbo_tokens(key_hash: str) -> None:
+    """Remove QBO tokens (on disconnect)."""
+    _ensure_db()
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM qbo_tokens WHERE key_hash = ?", (key_hash,))
