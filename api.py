@@ -400,12 +400,25 @@ def register(request: Request, body: RegisterRequest):
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise HTTPException(status_code=422, detail="Invalid email address.")
 
-    key  = create_api_key(email, plan="free")
+    try:
+        key = create_api_key(email, plan="free")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _log.exception("create_api_key failed for %s", email)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Registration failed: {type(exc).__name__}: {exc}",
+        )
+
     plan = PLANS["free"]
 
     # Fire-and-forget: email the key to the registrant's inbox.
     # Gracefully skipped when RESEND_API_KEY is not configured.
-    send_api_key_email(email, key, plan="free")
+    try:
+        send_api_key_email(email, key, plan="free")
+    except Exception as exc:
+        _log.warning("send_api_key_email failed for %s: %s", email, exc)
 
     return {
         "api_key":        key,
