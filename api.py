@@ -175,7 +175,11 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     "Internal Server Error" which the frontend cannot parse as JSON.
     """
     _log.exception("Unhandled exception on %s %s", request.method, request.url.path)
-    detail = f"Internal server error: {type(exc).__name__}: {exc}"  # TEMP: always expose for diagnosis
+    detail = (
+        f"Internal server error: {type(exc).__name__}: {exc}"
+        if not _IS_PROD
+        else "Internal server error. Please try again or contact support@statably.org."
+    )
     return JSONResponse(status_code=500, content={"detail": detail})
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
@@ -354,76 +358,22 @@ def _tx_to_dict(tx: Transaction) -> dict:
 
 @app.get("/api/health")
 def health():
-    from src.auth import _DB_PATH, _ensure_db, _get_conn
-    steps = {}
+    from src.auth import _DB_PATH, _ensure_db
+    db_ok = True
+    db_error = None
     try:
         _ensure_db()
-        steps["ensure_db"] = "ok"
     except Exception as exc:
-        steps["ensure_db"] = f"FAIL: {type(exc).__name__}: {exc}"
+        db_ok = False
+        db_error = f"{type(exc).__name__}: {exc}"
         _log.exception("DB health check failed")
-        return {"status": "degraded", "service": "statably", "version": "1.2.1", "steps": steps, "db_path": str(_DB_PATH)}
-    try:
-        with _get_conn() as conn:
-            conn.execute("SELECT count(*) FROM api_keys").fetchone()
-        steps["select"] = "ok"
-    except Exception as exc:
-        steps["select"] = f"FAIL: {type(exc).__name__}: {exc}"
-        _log.exception("DB select check failed")
-    try:
-        with _get_conn() as conn:
-            conn.execute(
-                "INSERT INTO api_keys (key,email,plan,status,conversions_used,period_start,created_at) VALUES (?,?,?,?,?,?,?)",
-                ("probe_hash_diag","probe@statably.org","free","active",0,"2024-01-01","2024-01-01T00:00:00"),
-            )
-        steps["insert"] = "ok"
-        with _get_conn() as conn:
-            conn.execute("DELETE FROM api_keys WHERE key='probe_hash_diag'")
-        steps["cleanup"] = "ok"
-    except Exception as exc:
-        steps["insert"] = f"FAIL: {type(exc).__name__}: {exc}"
-        _log.exception("DB insert check failed")
     return {
-        "status": "ok" if all(v == "ok" for v in steps.values()) else "degraded",
+        "status": "ok" if db_ok else "degraded",
         "service": "statably",
-        "version": "1.2.1",
-        "steps": steps,
+        "version": "1.2.0",
+        "db": "ok" if db_ok else db_error,
         "db_path": str(_DB_PATH),
     }
-
-
-@app.get("/api/debug/register-probe")
-def debug_register_probe():
-    """Temp diagnostic: test each step of the register flow without creating a key."""
-    import sqlite3 as _sqlite3
-    from src.auth import _DB_PATH, _ensure_db, _get_conn
-    steps = {}
-    try:
-        _ensure_db()
-        steps["ensure_db"] = "ok"
-    except Exception as e:
-        steps["ensure_db"] = f"FAIL: {type(e).__name__}: {e}"
-        return steps
-    try:
-        with _get_conn() as conn:
-            conn.execute("SELECT count(*) FROM api_keys").fetchone()
-        steps["select"] = "ok"
-    except Exception as e:
-        steps["select"] = f"FAIL: {type(e).__name__}: {e}"
-        return steps
-    try:
-        with _get_conn() as conn:
-            conn.execute(
-                "INSERT INTO api_keys (key,email,plan,status,conversions_used,period_start,created_at) VALUES (?,?,?,?,?,?,?)",
-                ("probe_test_hash_do_not_use","probe@example.com","free","active",0,"2024-01-01","2024-01-01T00:00:00")
-            )
-        steps["insert"] = "ok"
-        with _get_conn() as conn:
-            conn.execute("DELETE FROM api_keys WHERE key='probe_test_hash_do_not_use'")
-        steps["cleanup"] = "ok"
-    except Exception as e:
-        steps["insert"] = f"FAIL: {type(e).__name__}: {e}"
-    return steps
 
 
 @app.get("/api/banks")
@@ -440,7 +390,7 @@ class RegisterRequest(BaseModel):
 
 @app.post("/api/auth/register", status_code=201)
 @limiter.limit("3/hour")
-def register(request: Request, body: RegisterRequest):
+def register(request: Request, response: Response, body: RegisterRequest):
     """
     Issue a free API key tied to an email address.
 
@@ -453,25 +403,12 @@ def register(request: Request, body: RegisterRequest):
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise HTTPException(status_code=422, detail="Invalid email address.")
 
-    try:
-        key = create_api_key(email, plan="free")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        _log.exception("create_api_key failed for %s", email)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Registration failed: {type(exc).__name__}: {exc}",
-        )
-
+    key  = create_api_key(email, plan="free")
     plan = PLANS["free"]
 
     # Fire-and-forget: email the key to the registrant's inbox.
     # Gracefully skipped when RESEND_API_KEY is not configured.
-    try:
-        send_api_key_email(email, key, plan="free")
-    except Exception as exc:
-        _log.warning("send_api_key_email failed for %s: %s", email, exc)
+    send_api_key_email(email, key, plan="free")
 
     return {
         "api_key":        key,
@@ -490,7 +427,7 @@ def register(request: Request, body: RegisterRequest):
 
 @app.post("/api/auth/recover", status_code=200)
 @limiter.limit("3/hour")
-def recover(request: Request, body: RegisterRequest):
+def recover(request: Request, response: Response, body: RegisterRequest):
     """
     Recover a lost API key by email.
 
@@ -535,7 +472,7 @@ def _sanitize_report_field(value: str, max_len: int = 200) -> str:
 
 @app.post("/api/report-error", status_code=200)
 @limiter.limit("10/hour")
-def report_error(request: Request, body: ErrorReportRequest):
+def report_error(request: Request, response: Response, body: ErrorReportRequest):
     """
     Accept a user-submitted parsing error report and forward it to support.
     No authentication required — we want to hear from free-tier users too.
@@ -565,7 +502,7 @@ def report_error(request: Request, body: ErrorReportRequest):
 
 @app.get("/api/auth/usage")
 @limiter.limit("10/minute")
-def usage(request: Request, record: dict = Depends(verify_key_only)):
+def usage(request: Request, response: Response, record: dict = Depends(verify_key_only)):
     """Return the current plan, usage counter, and remaining quota for the key."""
     plan_info = PLANS.get(record["plan"], PLANS["free"])
     limit     = plan_info["monthly_limit"]
@@ -595,9 +532,10 @@ class CheckoutRequest(BaseModel):
 @app.post("/api/auth/checkout")
 @limiter.limit("10/minute")
 def checkout(
-    request: Request,
-    body:    CheckoutRequest,
-    record:  dict = Depends(verify_key_only),
+    request:  Request,
+    response: Response,
+    body:     CheckoutRequest,
+    record:   dict = Depends(verify_key_only),
 ):
     """
     Create a Stripe Checkout session to upgrade to a paid plan.
@@ -632,9 +570,10 @@ class RevokeRequest(BaseModel):
 @app.post("/api/auth/revoke", status_code=200)
 @limiter.limit("5/hour")
 def revoke(
-    request: Request,
-    body:    RevokeRequest,
-    record:  dict = Depends(verify_key_only),
+    request:  Request,
+    response: Response,
+    body:     RevokeRequest,
+    record:   dict = Depends(verify_key_only),
 ):
     """
     Permanently revoke the authenticated API key.
@@ -669,8 +608,9 @@ def revoke(
 @app.post("/api/auth/rotate", status_code=200)
 @limiter.limit("3/hour")
 def rotate(
-    request: Request,
-    record:  dict = Depends(verify_key_only),
+    request:  Request,
+    response: Response,
+    record:   dict = Depends(verify_key_only),
 ):
     """
     Atomically rotate the authenticated API key.
@@ -718,6 +658,7 @@ async def stripe_webhook(request: Request):
 @limiter.limit("20/minute")
 async def convert(
     request:    Request,
+    response:   Response,
     file:       UploadFile = File(..., description="Bank statement PDF"),
     format:     Literal["ofx", "qfx", "csv"] = Query(
         default="ofx",
@@ -815,6 +756,7 @@ async def convert(
 @limiter.limit("10/minute")
 async def batch_convert(
     request:    Request,
+    response:   Response,
     files:      List[UploadFile] = File(..., description="One or more bank statement PDFs"),
     format:     Literal["ofx", "qfx", "csv"] = Query(default="ofx"),
     start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
@@ -955,6 +897,7 @@ async def batch_convert(
 @limiter.limit("10/minute")
 async def batch_preview(
     request:    Request,
+    response:   Response,
     files:      List[UploadFile] = File(..., description="One or more bank statement PDFs"),
     start_date: Optional[str]   = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str]   = Query(default=None, description="Filter end date YYYY-MM-DD"),
@@ -1073,6 +1016,7 @@ async def batch_preview(
 @limiter.limit("20/minute")
 async def preview(
     request:    Request,
+    response:   Response,
     file:       UploadFile = File(..., description="Bank statement PDF"),
     start_date: Optional[str] = Query(default=None, description="Filter start date YYYY-MM-DD"),
     end_date:   Optional[str] = Query(default=None, description="Filter end date YYYY-MM-DD"),
@@ -1168,9 +1112,10 @@ class ExportRequest(BaseModel):
 @app.post("/api/export")
 @limiter.limit("30/minute")
 async def export_transactions(
-    request: Request,
-    req:     ExportRequest,
-    _auth:   dict = Depends(verify_key_only),  # auth required but quota NOT incremented
+    request:  Request,
+    response: Response,
+    req:      ExportRequest,
+    _auth:    dict = Depends(verify_key_only),  # auth required but quota NOT incremented
 ):
     """
     Accept reviewed/edited transactions as JSON and return an OFX/QFX/CSV file.
@@ -1254,7 +1199,7 @@ async def export_transactions(
 
 @app.get("/api/auth/qbo/connect")
 @limiter.limit("10/minute")
-def qbo_connect(request: Request, record: dict = Depends(verify_key_only)):
+def qbo_connect(request: Request, response: Response, record: dict = Depends(verify_key_only)):
     """
     Return the Intuit OAuth 2.0 authorization URL for this API key.
 
@@ -1298,7 +1243,7 @@ async def qbo_callback(
 
 @app.get("/api/auth/qbo/status")
 @limiter.limit("20/minute")
-def qbo_status(request: Request, record: dict = Depends(verify_key_only)):
+def qbo_status(request: Request, response: Response, record: dict = Depends(verify_key_only)):
     """
     Check whether QuickBooks Online is connected for this API key.
 
@@ -1321,7 +1266,7 @@ def qbo_status(request: Request, record: dict = Depends(verify_key_only)):
 
 @app.delete("/api/auth/qbo/disconnect")
 @limiter.limit("10/minute")
-def qbo_disconnect(request: Request, record: dict = Depends(verify_key_only)):
+def qbo_disconnect(request: Request, response: Response, record: dict = Depends(verify_key_only)):
     """
     Revoke the QuickBooks tokens at Intuit and remove them from the database.
     After this call the user must re-authorize to push transactions.
@@ -1343,9 +1288,10 @@ class QBOPushRequest(BaseModel):
 @app.post("/api/qbo/push")
 @limiter.limit("10/minute")
 async def qbo_push(
-    request: Request,
-    req:     QBOPushRequest,
-    record:  dict = Depends(verify_key_only),
+    request:  Request,
+    response: Response,
+    req:      QBOPushRequest,
+    record:   dict = Depends(verify_key_only),
 ):
     """
     Push reviewed transactions directly to the connected QuickBooks Online company.
