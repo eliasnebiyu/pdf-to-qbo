@@ -196,32 +196,49 @@ app.add_middleware(
 
 
 # ── Content-Security-Policy middleware ────────────────────────────────────────
-from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
-from starlette.requests import Request as _Request
+# Pure ASGI middleware avoids the BaseHTTPMiddleware bug where exceptions in
+# route handlers leak as plain-text 500s instead of FastAPI JSON responses.
+from starlette.types import ASGIApp as _ASGIApp, Receive as _Receive, Scope as _Scope, Send as _Send
+
+_CSP_VALUE = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self' https://*.sentry.io https://api.stripe.com https://oauth.platform.intuit.com; "
+    "frame-src https://js.stripe.com; "
+    "worker-src blob:; "
+    "object-src 'none'; "
+    "base-uri 'self';"
+).encode()
+
+_SECURITY_HEADERS = [
+    (b"content-security-policy", _CSP_VALUE),
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+]
 
 
-class _CSPMiddleware(_BaseHTTPMiddleware):
-    """Add Content-Security-Policy and other security headers to all responses."""
-    async def dispatch(self, request: _Request, call_next):
-        response = await call_next(request)
-        # Restrictive CSP: prevents XSS from financial data rendered in DOM.
-        # The SPA loads its own assets from 'self'; Sentry uses worker-src.
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self'; "                    # no unsafe-inline; Vite prod build has no inline scripts
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; "
-            "connect-src 'self' https://*.sentry.io https://api.stripe.com https://oauth.platform.intuit.com; "
-            "frame-src https://js.stripe.com; "
-            "worker-src blob:; "
-            "object-src 'none'; "
-            "base-uri 'self';"
-        )
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        return response
+class _CSPMiddleware:
+    def __init__(self, app: _ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: _Scope, receive: _Receive, send: _Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def _send_with_headers(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                message = {
+                    **message,
+                    "headers": list(message.get("headers", [])) + _SECURITY_HEADERS,
+                }
+            await send(message)
+
+        await self.app(scope, receive, _send_with_headers)
 
 
 app.add_middleware(_CSPMiddleware)
