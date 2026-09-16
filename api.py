@@ -373,6 +373,40 @@ def health():
     }
 
 
+@app.get("/api/debug/register-probe")
+def debug_register_probe():
+    """Temp diagnostic: test each step of the register flow without creating a key."""
+    import sqlite3 as _sqlite3
+    from src.auth import _DB_PATH, _ensure_db, _get_conn
+    steps = {}
+    try:
+        _ensure_db()
+        steps["ensure_db"] = "ok"
+    except Exception as e:
+        steps["ensure_db"] = f"FAIL: {type(e).__name__}: {e}"
+        return steps
+    try:
+        with _get_conn() as conn:
+            conn.execute("SELECT count(*) FROM api_keys").fetchone()
+        steps["select"] = "ok"
+    except Exception as e:
+        steps["select"] = f"FAIL: {type(e).__name__}: {e}"
+        return steps
+    try:
+        with _get_conn() as conn:
+            conn.execute(
+                "INSERT INTO api_keys (key,email,plan,status,conversions_used,period_start,created_at) VALUES (?,?,?,?,?,?,?)",
+                ("probe_test_hash_do_not_use","probe@example.com","free","active",0,"2024-01-01","2024-01-01T00:00:00")
+            )
+        steps["insert"] = "ok"
+        with _get_conn() as conn:
+            conn.execute("DELETE FROM api_keys WHERE key='probe_test_hash_do_not_use'")
+        steps["cleanup"] = "ok"
+    except Exception as e:
+        steps["insert"] = f"FAIL: {type(e).__name__}: {e}"
+    return steps
+
+
 @app.get("/api/banks")
 def banks():
     return {"supported_banks": list_supported_banks()}
