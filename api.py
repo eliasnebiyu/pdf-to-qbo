@@ -49,7 +49,7 @@ import hashlib as _hashlib
 import os
 import re
 import tempfile
-from datetime import date as date_type
+from datetime import date as date_type, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -70,10 +70,14 @@ from src.auth import (
     _KEY_HEADER as _AUTH_KEY_HEADER,
     check_and_increment,
     create_api_key,
+    delete_qbo_tokens,
+    get_qbo_tokens,
     log_conversion,
     require_api_key,
     revoke_key,
     rotate_key,
+    store_qbo_tokens,
+    update_qbo_tokens,
     validate_and_check_quota,
     verify_key_only,
 )
@@ -84,6 +88,7 @@ from src.models import BankAccount, ParsedStatement, Transaction, TransactionTyp
 from src.parser import detect_and_parse, list_supported_banks
 from src.utils.categorize import categorize_transactions
 from src.utils.dedup import merge_statements
+import src.qbo as _qbo_mod
 
 # ── Sentry error tracking ──────────────────────────────────────────────────────
 import sentry_sdk
@@ -1100,15 +1105,6 @@ async def export_transactions(
 #   4. DELETE /api/auth/qbo/disconnect → revoke + delete tokens
 #   5. POST /api/qbo/push           → push reviewed transactions to the QBO company
 
-from src.auth import (
-    delete_qbo_tokens,
-    get_qbo_tokens,
-    store_qbo_tokens,
-    update_qbo_tokens,
-)
-import src.qbo as _qbo_mod
-
-
 @app.get("/api/auth/qbo/connect")
 @limiter.limit("10/minute")
 def qbo_connect(request: Request, record: dict = Depends(verify_key_only)):
@@ -1162,7 +1158,6 @@ def qbo_status(request: Request, record: dict = Depends(verify_key_only)):
     Returns {connected: true, realm_id, environment} or {connected: false}.
     The refresh token expiry is checked; a very old token is reported as disconnected.
     """
-    from datetime import datetime, timezone
     tokens = get_qbo_tokens(record["key"])
     if not tokens:
         return {"connected": False}
@@ -1225,7 +1220,6 @@ async def qbo_push(
         )
 
     # Check refresh token expiry before attempting any QBO call
-    from datetime import datetime, timezone
     rt_exp = datetime.fromisoformat(tokens["refresh_token_expires_at"])
     if datetime.now(timezone.utc) > rt_exp:
         raise HTTPException(
