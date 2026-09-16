@@ -1668,14 +1668,18 @@ function ExportModal({ transactions, meta, onClose }) {
 // ── API Key Modal ─────────────────────────────────────────────────────────────
 function ApiKeyModal({ onSave }) {
   const trapRef = useFocusTrap(true);
-  const [tab,         setTab]        = useState("register");
-  const [email,       setEmail]      = useState("");
-  const [busy,        setBusy]       = useState(false);
-  const [regError,    setRegError]   = useState(null);
-  const [newKey,      setNewKey]     = useState(null);
-  const [copied,      setCopied]     = useState(false);
-  const [existingVal, setExistingVal] = useState("");
-  const [pasteError,  setPasteError] = useState(null);
+  const [tab,          setTab]         = useState("register");
+  const [email,        setEmail]       = useState("");
+  const [busy,         setBusy]        = useState(false);
+  const [regError,     setRegError]    = useState(null);
+  const [newKey,       setNewKey]      = useState(null);
+  const [copied,       setCopied]      = useState(false);
+  const [existingVal,  setExistingVal] = useState("");
+  const [pasteError,   setPasteError]  = useState(null);
+  const [recoverEmail, setRecoverEmail] = useState("");
+  const [recoverBusy,  setRecoverBusy]  = useState(false);
+  const [recoverDone,  setRecoverDone]  = useState(false);
+  const [recoverError, setRecoverError] = useState(null);
 
   const handleRegister = async () => {
     if (!email) return;
@@ -1701,6 +1705,26 @@ function ApiKeyModal({ onSave }) {
     navigator.clipboard.writeText(newKey).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRecover = async () => {
+    if (!recoverEmail) return;
+    setRecoverBusy(true);
+    setRecoverError(null);
+    try {
+      const res = await fetch("/api/auth/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: recoverEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Recovery failed");
+      setRecoverDone(true);
+    } catch (err) {
+      setRecoverError(err.message);
+    } finally {
+      setRecoverBusy(false);
+    }
   };
 
   const handlePasteSave = () => {
@@ -1756,7 +1780,7 @@ function ApiKeyModal({ onSave }) {
 
         {/* Tabs */}
         <div className="reg-tabs">
-          {[["register", "Get a free key"], ["existing", "I have a key"]].map(([id, label]) => (
+          {[["register", "Get a free key"], ["existing", "I have a key"], ["recover", "Forgot my key"]].map(([id, label]) => (
             <button
               key={id}
               className={`reg-tab${tab === id ? " active" : ""}`}
@@ -1835,6 +1859,42 @@ function ApiKeyModal({ onSave }) {
                 Save key →
               </button>
             </div>
+          </>
+        )}
+
+        {/* ── Recover tab ── */}
+        {tab === "recover" && (
+          <>
+            {recoverDone ? (
+              <p style={{ color: "var(--green)", fontSize: 13, margin: "16px 0" }}>
+                ✓ Done — check your inbox (and spam folder) for your new API key.
+              </p>
+            ) : (
+              <>
+                <p style={{ fontSize: 13, color: "var(--muted)", margin: "12px 0" }}>
+                  Enter the email you registered with. We'll issue a new key and send it to your inbox.
+                </p>
+                <input
+                  className="key-input"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={recoverEmail}
+                  onChange={e => { setRecoverEmail(e.target.value); setRecoverError(null); }}
+                  onKeyDown={e => e.key === "Enter" && handleRecover()}
+                  autoFocus
+                />
+                {recoverError && <p className="key-error">{recoverError}</p>}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!recoverEmail || recoverBusy}
+                    onClick={handleRecover}
+                  >
+                    {recoverBusy ? "Sending…" : "Send new key →"}
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
 

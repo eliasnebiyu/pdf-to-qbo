@@ -75,6 +75,7 @@ from src.auth import (
     log_conversion,
     require_api_key,
     revoke_key,
+    rotate_by_email,
     rotate_key,
     store_qbo_tokens,
     update_qbo_tokens,
@@ -384,6 +385,37 @@ def register(request: Request, body: RegisterRequest):
             "A copy has been sent to your email. "
             "Include it as the X-API-Key header on every request."
         ),
+    }
+
+
+# ── Auth: recover lost API key ────────────────────────────────────────────────
+
+@app.post("/api/auth/recover", status_code=200)
+@limiter.limit("3/hour")
+def recover(request: Request, body: RegisterRequest):
+    """
+    Recover a lost API key by email.
+
+    Rotates the active key for the given email (revokes old, issues new) and
+    emails the new key.  Always returns the same response regardless of whether
+    an account exists — this prevents email enumeration.
+
+    Rate-limited to 3 attempts per hour per IP.
+    """
+    email = body.email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(status_code=422, detail="Invalid email address.")
+
+    new_key = rotate_by_email(email)
+    if new_key:
+        send_api_key_email(email, new_key, plan="free")
+
+    return {
+        "message": (
+            "If an active key exists for this email, a new one has been issued "
+            "and sent to your inbox. Check your spam folder if it doesn't arrive "
+            "within a few minutes."
+        )
     }
 
 

@@ -260,6 +260,43 @@ def get_key_hash_for_session(token: str) -> Optional[str]:
         return row["key"] if row else None
 
 
+def rotate_by_email(email: str) -> Optional[str]:
+    """
+    Rotate the active API key for a given email address.
+
+    Used in the account-recovery flow where the user has lost their key.
+    Returns the new raw key if an active key existed, or None if no key
+    was found for this email.  The old key is immediately revoked.
+    """
+    _ensure_db()
+    email = email.lower().strip()
+    with _get_conn() as conn:
+        old = conn.execute(
+            "SELECT * FROM api_keys WHERE email = ? AND status = 'active' LIMIT 1",
+            (email,),
+        ).fetchone()
+        if not old:
+            return None
+
+        new_raw  = "lf_" + secrets.token_hex(24)
+        new_hash = _hash_key(new_raw)
+        now      = datetime.now(timezone.utc).isoformat()
+
+        conn.execute(
+            """INSERT INTO api_keys
+               (key, email, plan, stripe_customer_id, stripe_subscription_id,
+                status, conversions_used, period_start, created_at)
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)""",
+            (new_hash, old["email"], old["plan"],
+             old["stripe_customer_id"], old["stripe_subscription_id"],
+             old["conversions_used"], old["period_start"], now),
+        )
+        conn.execute(
+            "UPDATE api_keys SET status = 'revoked' WHERE key = ?", (old["key"],)
+        )
+    return new_raw
+
+
 def rotate_key(raw_key: str) -> str:
     """
     Atomically generate a new API key and revoke the old one.
