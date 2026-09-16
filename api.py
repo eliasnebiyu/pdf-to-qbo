@@ -56,7 +56,7 @@ from typing import List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -161,6 +161,26 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+import logging as _logging
+_log = _logging.getLogger("statably")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all for non-HTTP exceptions (e.g. sqlite3.OperationalError, OSError).
+
+    Without this, Starlette's ServerErrorMiddleware returns plain-text
+    "Internal Server Error" which the frontend cannot parse as JSON.
+    """
+    _log.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    detail = (
+        f"Internal server error: {type(exc).__name__}: {exc}"
+        if not _IS_PROD
+        else "Internal server error. Please try again or contact support@statably.org."
+    )
+    return JSONResponse(status_code=500, content={"detail": detail})
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 
@@ -338,7 +358,23 @@ def _tx_to_dict(tx: Transaction) -> dict:
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "statably", "version": "1.2.0"}
+    from src.auth import _DB_PATH, _ensure_db
+    db_ok = True
+    db_error = None
+    try:
+        _ensure_db()
+        db_ok = True
+    except Exception as exc:
+        db_ok = False
+        db_error = f"{type(exc).__name__}: {exc}"
+        _log.exception("DB health check failed")
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "service": "statably",
+        "version": "1.2.0",
+        "db": "ok" if db_ok else db_error,
+        "db_path": str(_DB_PATH),
+    }
 
 
 @app.get("/api/banks")
