@@ -354,21 +354,40 @@ def _tx_to_dict(tx: Transaction) -> dict:
 
 @app.get("/api/health")
 def health():
-    from src.auth import _DB_PATH, _ensure_db
-    db_ok = True
-    db_error = None
+    from src.auth import _DB_PATH, _ensure_db, _get_conn
+    steps = {}
     try:
         _ensure_db()
-        db_ok = True
+        steps["ensure_db"] = "ok"
     except Exception as exc:
-        db_ok = False
-        db_error = f"{type(exc).__name__}: {exc}"
+        steps["ensure_db"] = f"FAIL: {type(exc).__name__}: {exc}"
         _log.exception("DB health check failed")
+        return {"status": "degraded", "service": "statably", "version": "1.2.1", "steps": steps, "db_path": str(_DB_PATH)}
+    try:
+        with _get_conn() as conn:
+            conn.execute("SELECT count(*) FROM api_keys").fetchone()
+        steps["select"] = "ok"
+    except Exception as exc:
+        steps["select"] = f"FAIL: {type(exc).__name__}: {exc}"
+        _log.exception("DB select check failed")
+    try:
+        with _get_conn() as conn:
+            conn.execute(
+                "INSERT INTO api_keys (key,email,plan,status,conversions_used,period_start,created_at) VALUES (?,?,?,?,?,?,?)",
+                ("probe_hash_diag","probe@statably.org","free","active",0,"2024-01-01","2024-01-01T00:00:00"),
+            )
+        steps["insert"] = "ok"
+        with _get_conn() as conn:
+            conn.execute("DELETE FROM api_keys WHERE key='probe_hash_diag'")
+        steps["cleanup"] = "ok"
+    except Exception as exc:
+        steps["insert"] = f"FAIL: {type(exc).__name__}: {exc}"
+        _log.exception("DB insert check failed")
     return {
-        "status": "ok" if db_ok else "degraded",
+        "status": "ok" if all(v == "ok" for v in steps.values()) else "degraded",
         "service": "statably",
-        "version": "1.2.0",
-        "db": "ok" if db_ok else db_error,
+        "version": "1.2.1",
+        "steps": steps,
         "db_path": str(_DB_PATH),
     }
 
