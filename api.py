@@ -175,11 +175,7 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     "Internal Server Error" which the frontend cannot parse as JSON.
     """
     _log.exception("Unhandled exception on %s %s", request.method, request.url.path)
-    detail = (
-        f"Internal server error: {type(exc).__name__}: {exc}"
-        if not _IS_PROD
-        else "Internal server error. Please try again or contact support@statably.org."
-    )
+    detail = f"Internal server error: {type(exc).__name__}: {exc}"  # TEMP: always expose for diagnosis
     return JSONResponse(status_code=500, content={"detail": detail})
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
