@@ -138,7 +138,13 @@ def _amount(v: Decimal) -> str:
 
 def _escape(s: str) -> str:
     """Escape characters that break OFX SGML parsing."""
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+         .replace("\r", " ")
+         .replace("\n", " ")
+    )
 
 
 def _tx_block(tx: Transaction, warnings: list[str]) -> str:

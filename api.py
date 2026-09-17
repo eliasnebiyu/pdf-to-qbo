@@ -46,6 +46,7 @@ Deploy on Railway
   ADMIN_API_KEY=<long-random-secret>   (optional: bypasses all quotas)
 """
 import hashlib as _hashlib
+import httpx as _httpx
 import os
 import re
 import tempfile
@@ -223,12 +224,13 @@ from starlette.types import ASGIApp as _ASGIApp, Receive as _Receive, Scope as _
 
 _CSP_VALUE = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    "script-src 'self' https://challenges.cloudflare.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "img-src 'self' data:; "
-    "connect-src 'self' https://*.sentry.io https://api.stripe.com https://oauth.platform.intuit.com; "
-    "frame-src https://js.stripe.com; "
+    "connect-src 'self' https://*.sentry.io https://api.stripe.com "
+    "https://oauth.platform.intuit.com https://challenges.cloudflare.com; "
+    "frame-src https://js.stripe.com https://challenges.cloudflare.com; "
     "worker-src blob:; "
     "object-src 'none'; "
     "base-uri 'self';"
@@ -313,6 +315,39 @@ def _save_upload(contents: bytes) -> Path:
     return Path(tmp.name)
 
 
+_TURNSTILE_SECRET = os.getenv("CLOUDFLARE_TURNSTILE_SECRET_KEY", "")
+_TURNSTILE_VERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def _verify_turnstile(token: Optional[str], request: Request) -> None:
+    """
+    Validate a Cloudflare Turnstile challenge token server-side.
+
+    No-op when CLOUDFLARE_TURNSTILE_SECRET_KEY is not configured (dev / pre-launch).
+    Fails open on network errors so Cloudflare outages don't block registrations.
+    """
+    if not _TURNSTILE_SECRET:
+        return
+    if not token:
+        raise HTTPException(status_code=400, detail="Bot protection check required. Please complete the challenge.")
+    try:
+        resp = _httpx.post(
+            _TURNSTILE_VERIFY,
+            data={
+                "secret":   _TURNSTILE_SECRET,
+                "response": token,
+                "remoteip": request.client.host if request.client else None,
+            },
+            timeout=5,
+        )
+        if not resp.json().get("success"):
+            raise HTTPException(status_code=400, detail="Bot protection check failed. Please try again.")
+    except HTTPException:
+        raise
+    except Exception:
+        _log.warning("Turnstile verification unreachable — failing open")
+
+
 def _filter_by_date(
     txns: list[Transaction],
     start: Optional[str],
@@ -376,6 +411,14 @@ def health():
     }
 
 
+@app.get("/api/config")
+def config():
+    """Return public runtime configuration consumed by the frontend."""
+    return {
+        "turnstile_site_key": os.getenv("CLOUDFLARE_TURNSTILE_SITE_KEY", ""),
+    }
+
+
 @app.get("/api/banks")
 def banks():
     return {"supported_banks": list_supported_banks()}
@@ -384,8 +427,9 @@ def banks():
 # ── Auth: register  (public, rate-limited per IP) ─────────────────────────────
 
 class RegisterRequest(BaseModel):
-    email:        str
-    company_name: Optional[str] = None  # accountant / firm name (optional)
+    email:           str
+    company_name:    Optional[str] = None  # accountant / firm name (optional)
+    turnstile_token: Optional[str] = None  # Cloudflare Turnstile challenge token
 
 
 @app.post("/api/auth/register", status_code=201)
@@ -402,6 +446,8 @@ def register(request: Request, response: Response, body: RegisterRequest):
     email = body.email.strip().lower()
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise HTTPException(status_code=422, detail="Invalid email address.")
+
+    _verify_turnstile(body.turnstile_token, request)
 
     key  = create_api_key(email, plan="free")
     plan = PLANS["free"]

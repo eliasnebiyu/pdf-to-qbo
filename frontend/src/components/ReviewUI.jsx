@@ -1668,34 +1668,92 @@ function ExportModal({ transactions, meta, onClose }) {
 // ── API Key Modal ─────────────────────────────────────────────────────────────
 function ApiKeyModal({ onSave }) {
   const trapRef = useFocusTrap(true);
-  const [tab,          setTab]         = useState("register");
-  const [email,        setEmail]       = useState("");
-  const [busy,         setBusy]        = useState(false);
-  const [regError,     setRegError]    = useState(null);
-  const [newKey,       setNewKey]      = useState(null);
-  const [copied,       setCopied]      = useState(false);
-  const [existingVal,  setExistingVal] = useState("");
-  const [pasteError,   setPasteError]  = useState(null);
-  const [recoverEmail, setRecoverEmail] = useState("");
-  const [recoverBusy,  setRecoverBusy]  = useState(false);
-  const [recoverDone,  setRecoverDone]  = useState(false);
-  const [recoverError, setRecoverError] = useState(null);
+  const [tab,            setTab]           = useState("register");
+  const [email,          setEmail]         = useState("");
+  const [busy,           setBusy]          = useState(false);
+  const [regError,       setRegError]      = useState(null);
+  const [newKey,         setNewKey]        = useState(null);
+  const [copied,         setCopied]        = useState(false);
+  const [existingVal,    setExistingVal]   = useState("");
+  const [pasteError,     setPasteError]    = useState(null);
+  const [recoverEmail,   setRecoverEmail]  = useState("");
+  const [recoverBusy,    setRecoverBusy]   = useState(false);
+  const [recoverDone,    setRecoverDone]   = useState(false);
+  const [recoverError,   setRecoverError]  = useState(null);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileToken,   setTurnstileToken]   = useState(null);
+  const turnstileRef    = useRef(null);
+  const turnstileWidget = useRef(null);
+
+  // Fetch public config (Turnstile site key) once on mount
+  useEffect(() => {
+    fetch("/api/config").then(r => r.json()).then(d => {
+      if (d.turnstile_site_key) setTurnstileSiteKey(d.turnstile_site_key);
+    }).catch(() => {});
+  }, []);
+
+  // Load + render Turnstile widget whenever we're on the register tab and have a site key
+  useEffect(() => {
+    if (!turnstileSiteKey || tab !== "register") return;
+    const render = () => {
+      if (!turnstileRef.current || !window.turnstile) return;
+      if (turnstileWidget.current != null) {
+        window.turnstile.remove(turnstileWidget.current);
+        turnstileWidget.current = null;
+      }
+      turnstileWidget.current = window.turnstile.render(turnstileRef.current, {
+        sitekey: turnstileSiteKey,
+        callback:          token  => setTurnstileToken(token),
+        "expired-callback": ()    => setTurnstileToken(null),
+        "error-callback":   ()    => setTurnstileToken(null),
+      });
+    };
+    if (window.turnstile) {
+      render();
+    } else {
+      const existing = document.querySelector('script[src*="turnstile"]');
+      if (!existing) {
+        const s = document.createElement("script");
+        s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+        s.async = true; s.defer = true;
+        s.onload = render;
+        document.head.appendChild(s);
+      } else {
+        existing.addEventListener("load", render);
+      }
+    }
+    return () => {
+      if (turnstileWidget.current != null && window.turnstile) {
+        window.turnstile.remove(turnstileWidget.current);
+        turnstileWidget.current = null;
+      }
+    };
+  }, [turnstileSiteKey, tab]);
 
   const handleRegister = async () => {
     if (!email) return;
+    if (turnstileSiteKey && !turnstileToken) {
+      setRegError("Please complete the bot protection check.");
+      return;
+    }
     setBusy(true);
     setRegError(null);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, turnstile_token: turnstileToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Registration failed");
       setNewKey(data.api_key);
     } catch (err) {
       setRegError(err.message);
+      // Reset widget so user can retry
+      if (turnstileWidget.current != null && window.turnstile) {
+        window.turnstile.reset(turnstileWidget.current);
+        setTurnstileToken(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -1821,6 +1879,9 @@ function ApiKeyModal({ onSave }) {
               onKeyDown={e => e.key === "Enter" && handleRegister()}
               autoFocus
             />
+            {turnstileSiteKey && (
+              <div ref={turnstileRef} style={{ margin: "12px 0" }} />
+            )}
             {regError && <p className="key-error">{regError}</p>}
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

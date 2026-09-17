@@ -27,6 +27,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -541,6 +542,66 @@ def verify_key_only(api_key: str = Security(_KEY_HEADER)) -> dict:
     return _maybe_reset_period(record)
 
 
+# ── QBO token encryption ───────────────────────────────────────────────────────
+# Tokens (access_token, refresh_token) are live OAuth credentials; if the
+# SQLite file is extracted they would grant immediate QBO access.  We encrypt
+# them with Fernet (AES-128-CBC + HMAC-SHA256) keyed to TOKEN_ENCRYPTION_KEY.
+#
+# To generate a key:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Set that value as TOKEN_ENCRYPTION_KEY in your Railway environment.
+#
+# If the env var is absent, tokens are stored in plaintext (backward compat for
+# local dev without a key).  Set TOKEN_ENCRYPTION_KEY in production.
+
+class _TokenDecryptionError(Exception):
+    """Raised when a stored token cannot be decrypted (e.g. after key rotation)."""
+
+
+@lru_cache(maxsize=1)
+def _get_fernet():
+    """Return a Fernet instance, or None if TOKEN_ENCRYPTION_KEY is not set."""
+    key = os.getenv("TOKEN_ENCRYPTION_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        return Fernet(key.encode())
+    except Exception as exc:
+        import logging
+        logging.getLogger("statably.auth").error(
+            "Invalid TOKEN_ENCRYPTION_KEY — QBO tokens will not be encrypted: %s", exc
+        )
+        return None
+
+
+def _enc(value: str) -> str:
+    """Encrypt *value*; returns plaintext when no key is configured."""
+    f = _get_fernet()
+    return f.encrypt(value.encode()).decode() if f else value
+
+
+def _dec(value: str) -> str:
+    """
+    Decrypt *value*.
+
+    Raises _TokenDecryptionError when TOKEN_ENCRYPTION_KEY is set but the
+    stored value cannot be decrypted (e.g. plaintext token from before
+    encryption was enabled, or after a key rotation).  Callers should treat
+    this as "QBO disconnected" and delete the stale record.
+    """
+    f = _get_fernet()
+    if f is None:
+        return value
+    try:
+        return f.decrypt(value.encode()).decode()
+    except Exception:
+        raise _TokenDecryptionError(
+            "QBO token decryption failed — token may have been stored before "
+            "TOKEN_ENCRYPTION_KEY was set. User must reconnect QBO."
+        )
+
+
 # ── QBO token storage ──────────────────────────────────────────────────────────
 
 def store_qbo_tokens(key_hash: str, token_data: dict) -> None:
@@ -571,8 +632,8 @@ def store_qbo_tokens(key_hash: str, token_data: dict) -> None:
             (
                 key_hash,
                 token_data["realm_id"],
-                token_data["access_token"],
-                token_data["refresh_token"],
+                _enc(token_data["access_token"]),
+                _enc(token_data["refresh_token"]),
                 token_data["access_token_expires_at"],
                 token_data["refresh_token_expires_at"],
                 now,
@@ -582,13 +643,29 @@ def store_qbo_tokens(key_hash: str, token_data: dict) -> None:
 
 
 def get_qbo_tokens(key_hash: str) -> Optional[dict]:
-    """Return the stored QBO token record for key_hash, or None."""
+    """
+    Return the stored QBO token record for key_hash, or None.
+
+    Returns None (and deletes the stale DB row) when TOKEN_ENCRYPTION_KEY is
+    set but the stored tokens cannot be decrypted — this happens after the key
+    is first configured while plaintext tokens already exist.  The user will
+    need to reconnect QBO.
+    """
     _ensure_db()
     with _get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM qbo_tokens WHERE key_hash = ?", (key_hash,)
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        record = dict(row)
+    try:
+        record["access_token"]  = _dec(record["access_token"])
+        record["refresh_token"] = _dec(record["refresh_token"])
+    except _TokenDecryptionError:
+        delete_qbo_tokens(key_hash)
+        return None
+    return record
 
 
 def update_qbo_tokens(key_hash: str, partial: dict) -> None:
@@ -612,9 +689,9 @@ def update_qbo_tokens(key_hash: str, partial: dict) -> None:
             WHERE key_hash = ?
             """,
             (
-                partial["access_token"],
+                _enc(partial["access_token"]),
                 partial["access_token_expires_at"],
-                partial.get("refresh_token"),
+                _enc(partial["refresh_token"]) if partial.get("refresh_token") else None,
                 partial.get("refresh_token_expires_at"),
                 now,
                 key_hash,
