@@ -222,11 +222,11 @@ function KeySuccess({ apiKey, email, onGoToApp }) {
 
 function AppPreview() {
   const rows = [
-    { date: "05/01", desc: "Square Inc · Green By Nature", amount: "+$193.28", cls: "dep" },
-    { date: "05/01", desc: "DEBIT CARD PURCHASE · SITEONE LANDSCAPE", amount: "−$154.90", cls: "wd" },
-    { date: "05/05", desc: "DIRECT DEPOSIT PAYROLL", amount: "+$3,500.00", cls: "dep" },
-    { date: "05/07", desc: "Check #7627", amount: "−$200.00", cls: "wd" },
-    { date: "05/12", desc: "5/3 ATM WITHDRAWAL", amount: "−$300.00", cls: "wd" },
+    { date: "Sep 02", desc: "Client Payment — Acme Consulting LLC", amount: "+$8,500.00", cls: "dep" },
+    { date: "Sep 05", desc: "Google Workspace — Monthly Subscription", amount: "−$72.00",   cls: "wd"  },
+    { date: "Sep 08", desc: "Client Payment — Meridian Group Inc.",    amount: "+$4,250.00", cls: "dep" },
+    { date: "Sep 12", desc: "QuickBooks Online — Annual Plan",         amount: "−$540.00",  cls: "wd"  },
+    { date: "Sep 15", desc: "Wire Transfer — Payroll Sep 1–15",        amount: "−$6,200.00", cls: "wd" },
   ];
   return (
     <div style={{
@@ -251,7 +251,7 @@ function AppPreview() {
             <div key={c} style={{ width: 11, height: 11, borderRadius: "50%", background: c, border: "1px solid rgba(0,0,0,0.06)" }} />
           ))}
         </div>
-        <span style={{ color: C.muted, fontSize: 12 }}>Fifth Third Bank • May 2026 • 66 transactions</span>
+        <span style={{ color: C.muted, fontSize: 12 }}>Chase Business Checking • Sep 2026 • 47 transactions</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <span style={{ background: C.primaryBg, color: C.primary, fontSize: 11, padding: "3px 8px", borderRadius: 5, fontWeight: 600 }}>QFX</span>
           <span style={{ background: "#F3F4F6", color: C.muted, fontSize: 11, padding: "3px 8px", borderRadius: 5 }}>CSV</span>
@@ -452,7 +452,7 @@ export default function LandingPage() {
               borderRadius: 20, padding: "5px 14px", marginBottom: 24,
             }}>
               <span style={{ width: 6, height: 6, background: C.primary, borderRadius: "50%", display: "inline-block" }} />
-              <span style={{ color: C.primary, fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}>QuickBooks® Compatible · 20+ Banks Supported</span>
+              <span style={{ color: C.primary, fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}>QuickBooks® Compatible</span>
             </div>
 
             <h1 style={{ fontSize: "clamp(30px, 3.8vw, 48px)", fontWeight: 700, lineHeight: 1.15, margin: "0 0 12px", letterSpacing: -0.3, color: C.text }}>
