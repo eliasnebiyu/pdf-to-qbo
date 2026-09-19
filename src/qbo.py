@@ -20,6 +20,7 @@ Token lifecycle:
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import time
@@ -28,6 +29,13 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import HTTPException
+
+_log = logging.getLogger("statably.qbo")
+
+
+def _tid(resp: httpx.Response) -> str:
+    """Extract intuit_tid from response headers for support tracing."""
+    return resp.headers.get("intuit_tid", "n/a")
 
 # ── Intuit OAuth / API endpoints ───────────────────────────────────────────────
 _ENV        = os.getenv("INTUIT_ENV", "sandbox").lower()
@@ -126,7 +134,10 @@ def exchange_code(code: str, realm_id: str) -> dict:
         timeout=30,
     )
     if resp.status_code != 200:
-        raise HTTPException(502, f"Intuit token exchange failed ({resp.status_code}): {resp.text[:300]}")
+        tid = _tid(resp)
+        _log.error("Intuit token exchange failed status=%s intuit_tid=%s body=%s",
+                   resp.status_code, tid, resp.text[:300])
+        raise HTTPException(502, f"Intuit token exchange failed ({resp.status_code}) [tid:{tid}]: {resp.text[:300]}")
     data = resp.json()
     now  = datetime.now(timezone.utc)
     return {
@@ -152,7 +163,10 @@ def refresh_tokens(refresh_token: str) -> dict:
         timeout=30,
     )
     if resp.status_code != 200:
-        raise HTTPException(502, f"Token refresh failed ({resp.status_code}): {resp.text[:300]}")
+        tid = _tid(resp)
+        _log.error("Intuit token refresh failed status=%s intuit_tid=%s body=%s",
+                   resp.status_code, tid, resp.text[:300])
+        raise HTTPException(502, f"Token refresh failed ({resp.status_code}) [tid:{tid}]: {resp.text[:300]}")
     data = resp.json()
     now  = datetime.now(timezone.utc)
     out: dict = {
@@ -342,7 +356,10 @@ def push_transactions(
                 if r.status_code in (200, 201):
                     pushed += 1
                 else:
-                    errors.append(f"{date_s} ${abs(amount):.2f}: HTTP {r.status_code} — {r.text[:120]}")
+                    tid = _tid(r)
+                    _log.error("QBO push failed date=%s amount=%s status=%s intuit_tid=%s body=%s",
+                               date_s, amount, r.status_code, tid, r.text[:120])
+                    errors.append(f"{date_s} ${abs(amount):.2f}: HTTP {r.status_code} [tid:{tid}] — {r.text[:120]}")
 
             except Exception as exc:
                 errors.append(str(exc)[:100])
