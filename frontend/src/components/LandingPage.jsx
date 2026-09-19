@@ -3,18 +3,20 @@ import { useNavigate } from "react-router-dom";
 
 /* ─── palette ─────────────────────────────────────────────────────────────── */
 const C = {
-  bg:       "#0b1120",
-  bgCard:   "#111827",
-  bgLight:  "#f8fafc",
-  border:   "#1e293b",
-  borderL:  "#e2e8f0",
-  accent:   "#10b981",
-  accentD:  "#059669",
-  accentBg: "rgba(16,185,129,0.08)",
-  blue:     "#3b82f6",
-  muted:    "#94a3b8",
-  white:    "#f1f5f9",
-  text:     "#1e293b",
+  bg:        "#FFFFFF",
+  bgAlt:     "#F7F8FA",
+  bgCard:    "#FFFFFF",
+  border:    "#E5E7EB",
+  primary:   "#1652F0",
+  primaryD:  "#1140C4",
+  primaryBg: "#EEF2FF",
+  accent:    "#0AAF60",
+  accentD:   "#059669",
+  accentBg:  "rgba(10,175,96,0.08)",
+  text:      "#111827",
+  textMid:   "#374151",
+  muted:     "#6B7280",
+  success:   "#059669",
 };
 
 /* ─── shared style helpers ─────────────────────────────────────────────────── */
@@ -36,6 +38,7 @@ const s = {
     border: "none",
     transition: "all 0.15s",
     textDecoration: "none",
+    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
   },
 };
 
@@ -45,24 +48,43 @@ function Nav({ onGetKey }) {
   return (
     <nav style={{
       position: "sticky", top: 0, zIndex: 100,
-      background: "rgba(11,17,32,0.95)",
-      backdropFilter: "blur(12px)",
+      background: "#FFFFFF",
       borderBottom: `1px solid ${C.border}`,
     }}>
       <div style={{ ...s.container, display: "flex", alignItems: "center", height: 64 }}>
-        <span style={{ fontSize: 20, fontWeight: 800, color: C.white, letterSpacing: -0.5 }}>
-          <span style={{ color: C.accent }}>Stat</span>ably
-        </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
-          <a href="#pricing" style={{ color: C.muted, textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
+        {/* Logo + trust badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 20, fontWeight: 700, color: C.primary, letterSpacing: -0.3, fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
+            Statably
+          </span>
+          <span style={{
+            background: C.primaryBg,
+            color: C.primary,
+            fontSize: 11,
+            fontWeight: 600,
+            padding: "3px 10px",
+            borderRadius: 20,
+            border: `1px solid rgba(22,82,240,0.2)`,
+            letterSpacing: 0.2,
+            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+          }}>
+            QuickBooks® Compatible
+          </span>
+        </div>
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+          <a href="#how-it-works" style={{ color: C.textMid, textDecoration: "none", fontSize: 14, fontWeight: 500, padding: "8px 12px", borderRadius: 6, fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
+            How it works
+          </a>
+          <a href="#pricing" style={{ color: C.textMid, textDecoration: "none", fontSize: 14, fontWeight: 500, padding: "8px 12px", borderRadius: 6, fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
             Pricing
           </a>
-          <a href="#banks" style={{ color: C.muted, textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
+          <a href="#banks" style={{ color: C.textMid, textDecoration: "none", fontSize: 14, fontWeight: 500, padding: "8px 12px", borderRadius: 6, fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
             Banks
           </a>
           <button
             onClick={onGetKey}
-            style={{ ...s.btn, background: C.accent, color: "#fff", padding: "9px 20px", fontSize: 14 }}
+            style={{ ...s.btn, background: C.primary, color: "#fff", padding: "9px 20px", fontSize: 14, marginLeft: 8 }}
           >
             Get free key →
           </button>
@@ -73,9 +95,9 @@ function Nav({ onGetKey }) {
 }
 
 function HeroEmailForm({ onSuccess }) {
-  const [email, setEmail]   = useState("");
+  const [email, setEmail]     = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError]   = useState("");
+  const [error, setError]     = useState("");
 
   async function submit(e) {
     e.preventDefault();
@@ -98,7 +120,7 @@ function HeroEmailForm({ onSuccess }) {
   }
 
   return (
-    <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 480 }}>
+    <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 480, fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
           type="email"
@@ -111,10 +133,11 @@ function HeroEmailForm({ onSuccess }) {
             padding: "13px 16px",
             borderRadius: 8,
             border: `1.5px solid ${C.border}`,
-            background: C.bgCard,
-            color: C.white,
+            background: "#FFFFFF",
+            color: C.text,
             fontSize: 15,
             outline: "none",
+            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
           }}
         />
         <button
@@ -122,7 +145,7 @@ function HeroEmailForm({ onSuccess }) {
           disabled={loading}
           style={{
             ...s.btn,
-            background: loading ? C.accentD : C.accent,
+            background: loading ? C.primaryD : C.primary,
             color: "#fff",
             whiteSpace: "nowrap",
           }}
@@ -130,10 +153,19 @@ function HeroEmailForm({ onSuccess }) {
           {loading ? "Sending…" : "Get free key →"}
         </button>
       </div>
-      {error && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{error}</p>}
-      <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>
-        No credit card. 10 free conversions / month. Cancel anytime.
-      </p>
+      {error && <p style={{ color: "#DC2626", fontSize: 13, margin: 0 }}>{error}</p>}
+      {/* Trust signals */}
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 4 }}>
+        {["Bank-grade encryption", "No credit card required", "10 free conversions/month"].map(t => (
+          <span key={t} style={{ color: C.muted, fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+              <circle cx="6.5" cy="6.5" r="6.5" fill={C.primaryBg} />
+              <path d="M3.5 6.5L5.5 8.5L9.5 4.5" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {t}
+          </span>
+        ))}
+      </div>
     </form>
   );
 }
@@ -149,28 +181,30 @@ function KeySuccess({ apiKey, email, onGoToApp }) {
 
   return (
     <div style={{
-      background: C.accentBg,
-      border: `1.5px solid ${C.accent}`,
+      background: "#F0FDF4",
+      border: `1.5px solid #BBF7D0`,
       borderRadius: 12,
       padding: "20px 24px",
       maxWidth: 520,
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     }}>
-      <p style={{ color: C.accent, fontWeight: 700, margin: "0 0 4px" }}>✓ Your free key is ready</p>
+      <p style={{ color: C.success, fontWeight: 700, margin: "0 0 4px" }}>Your free key is ready</p>
       <p style={{ color: C.muted, fontSize: 13, margin: "0 0 12px" }}>
-        Also sent to <strong style={{ color: C.white }}>{email}</strong>. Save it — shown only once.
+        Also sent to <strong style={{ color: C.text }}>{email}</strong>. Save it — shown only once.
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <code style={{
-          flex: 1, background: C.bgCard, color: C.white,
+          flex: 1, background: "#FFFFFF", color: C.text,
           padding: "10px 14px", borderRadius: 7, fontSize: 13,
           border: `1px solid ${C.border}`, wordBreak: "break-all",
+          fontFamily: "ui-monospace, 'SF Mono', monospace",
         }}>
           {apiKey}
         </code>
         <button onClick={copy} style={{
           ...s.btn, padding: "10px 16px", fontSize: 13,
-          background: copied ? C.accentD : C.bgCard,
-          color: copied ? "#fff" : C.muted,
+          background: copied ? C.success : "#FFFFFF",
+          color: copied ? "#fff" : C.textMid,
           border: `1px solid ${C.border}`,
         }}>
           {copied ? "Copied!" : "Copy"}
@@ -178,7 +212,7 @@ function KeySuccess({ apiKey, email, onGoToApp }) {
       </div>
       <button
         onClick={onGoToApp}
-        style={{ ...s.btn, marginTop: 16, background: C.accent, color: "#fff", width: "100%", justifyContent: "center" }}
+        style={{ ...s.btn, marginTop: 16, background: C.primary, color: "#fff", width: "100%", justifyContent: "center" }}
       >
         Open the converter →
       </button>
@@ -196,31 +230,37 @@ function AppPreview() {
   ];
   return (
     <div style={{
-      background: C.bgCard, border: `1px solid ${C.border}`,
-      borderRadius: 14, overflow: "hidden",
-      boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
+      background: "#FFFFFF",
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      overflow: "hidden",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     }}>
-      {/* fake topbar */}
+      {/* light topbar */}
       <div style={{
-        background: "#0f1929", padding: "12px 16px",
-        display: "flex", alignItems: "center", gap: 10,
+        background: "#F9FAFB",
+        padding: "12px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
         borderBottom: `1px solid ${C.border}`,
       }}>
         <div style={{ display: "flex", gap: 6 }}>
-          {["#ff5f57","#ffbd2e","#28c840"].map(c => (
-            <div key={c} style={{ width: 11, height: 11, borderRadius: "50%", background: c }} />
+          {["#FECACA","#FEF08A","#BBF7D0"].map(c => (
+            <div key={c} style={{ width: 11, height: 11, borderRadius: "50%", background: c, border: "1px solid rgba(0,0,0,0.06)" }} />
           ))}
         </div>
         <span style={{ color: C.muted, fontSize: 12 }}>Fifth Third Bank • May 2026 • 66 transactions</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <span style={{ background: "#1a2744", color: C.blue, fontSize: 11, padding: "3px 8px", borderRadius: 5, fontWeight: 600 }}>QFX</span>
-          <span style={{ background: "#1a2744", color: C.muted, fontSize: 11, padding: "3px 8px", borderRadius: 5 }}>CSV</span>
+          <span style={{ background: C.primaryBg, color: C.primary, fontSize: 11, padding: "3px 8px", borderRadius: 5, fontWeight: 600 }}>QFX</span>
+          <span style={{ background: "#F3F4F6", color: C.muted, fontSize: 11, padding: "3px 8px", borderRadius: 5 }}>CSV</span>
         </div>
       </div>
-      {/* fake table */}
+      {/* table */}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
-          <tr style={{ background: "#0d1525" }}>
+          <tr style={{ background: "#F9FAFB" }}>
             {["Date","Description","Amount","Balance","Category"].map(h => (
               <th key={h} style={{ padding: "8px 14px", textAlign: "left", color: C.muted, fontWeight: 600, letterSpacing: 0.3 }}>{h}</th>
             ))}
@@ -228,13 +268,13 @@ function AppPreview() {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} style={{ borderTop: `1px solid ${C.border}`, background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)" }}>
+            <tr key={i} style={{ borderTop: `1px solid ${C.border}`, background: i % 2 === 0 ? "#FFFFFF" : "#FAFAFA" }}>
               <td style={{ padding: "9px 14px", color: C.muted, whiteSpace: "nowrap" }}>{r.date}</td>
-              <td style={{ padding: "9px 14px", color: C.white, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.desc}</td>
-              <td style={{ padding: "9px 14px", color: r.cls === "dep" ? C.accent : "#f87171", fontWeight: 600, whiteSpace: "nowrap" }}>{r.amount}</td>
+              <td style={{ padding: "9px 14px", color: C.text, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.desc}</td>
+              <td style={{ padding: "9px 14px", color: r.cls === "dep" ? C.accent : "#DC2626", fontWeight: 600, whiteSpace: "nowrap" }}>{r.amount}</td>
               <td style={{ padding: "9px 14px", color: C.muted }}>—</td>
               <td style={{ padding: "9px 14px" }}>
-                <span style={{ background: C.accentBg, color: C.accent, fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>
+                <span style={{ background: r.cls === "dep" ? "#F0FDF4" : "#FEF2F2", color: r.cls === "dep" ? C.success : "#DC2626", fontSize: 10, padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>
                   {r.cls === "dep" ? "Income" : "Expense"}
                 </span>
               </td>
@@ -242,9 +282,9 @@ function AppPreview() {
           ))}
         </tbody>
       </table>
-      <div style={{ padding: "10px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ color: C.muted, fontSize: 11 }}>✓ Balance reconciled · 0 discrepancies</span>
-        <button style={{ ...s.btn, padding: "7px 16px", fontSize: 12, background: C.accent, color: "#fff" }}>
+      <div style={{ padding: "10px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", background: "#FAFAFA" }}>
+        <span style={{ color: C.muted, fontSize: 11 }}>Balance reconciled · 0 discrepancies</span>
+        <button style={{ ...s.btn, padding: "7px 16px", fontSize: 12, background: C.primary, color: "#fff" }}>
           Download OFX
         </button>
       </div>
@@ -252,21 +292,58 @@ function AppPreview() {
   );
 }
 
+/* SVG icons for DiffCard — simple, clean, no emoji */
+const IconEdit = () => (
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="8" fill={C.primaryBg} />
+    <path d="M8 18.5V20h1.5l7-7-1.5-1.5-7 7zm10.7-9.3a1 1 0 0 0 0-1.4l-1-1a1 1 0 0 0-1.4 0l-1.3 1.3 2.4 2.4 1.3-1.3z" fill={C.primary} />
+  </svg>
+);
+
+const IconApi = () => (
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="8" fill={C.primaryBg} />
+    <path d="M9 14h10M14 9l5 5-5 5" stroke={C.primary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const IconTransparency = () => (
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="8" fill={C.primaryBg} />
+    <circle cx="14" cy="14" r="5" stroke={C.primary} strokeWidth="1.8" />
+    <path d="M14 9V7M14 21v-2M9 14H7M21 14h-2" stroke={C.primary} strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
 function DiffCard({ icon, title, sub, tag }) {
   return (
     <div style={{
-      background: C.bgCard, border: `1px solid ${C.border}`,
-      borderRadius: 14, padding: "28px 28px",
-      display: "flex", flexDirection: "column", gap: 12,
+      background: C.bgCard,
+      border: `1px solid ${C.border}`,
+      borderRadius: 14,
+      padding: "28px 28px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
+      boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
     }}>
       {tag && (
-        <span style={{ background: C.accentBg, color: C.accent, fontSize: 11, padding: "3px 8px", borderRadius: 4, fontWeight: 700, alignSelf: "flex-start", letterSpacing: 0.5 }}>
+        <span style={{
+          background: C.primaryBg,
+          color: C.primary,
+          fontSize: 11,
+          padding: "3px 10px",
+          borderRadius: 20,
+          fontWeight: 600,
+          alignSelf: "flex-start",
+          letterSpacing: 0.2,
+        }}>
           {tag}
         </span>
       )}
-      <div style={{ fontSize: 32 }}>{icon}</div>
-      <h3 style={{ color: C.white, margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h3>
-      <p style={{ color: C.muted, margin: 0, fontSize: 14, lineHeight: 1.7 }}>{sub}</p>
+      <div>{icon}</div>
+      <h3 style={{ color: C.text, margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: -0.2 }}>{title}</h3>
+      <p style={{ color: C.textMid, margin: 0, fontSize: 14, lineHeight: 1.7 }}>{sub}</p>
     </div>
   );
 }
@@ -274,31 +351,36 @@ function DiffCard({ icon, title, sub, tag }) {
 function PricingCard({ plan, price, per, features, cta, highlight, onCta }) {
   return (
     <div style={{
-      background: highlight ? "linear-gradient(135deg, #0d2a1e 0%, #0a1f1a 100%)" : C.bgCard,
-      border: `1.5px solid ${highlight ? C.accent : C.border}`,
-      borderRadius: 16, padding: "32px 28px",
-      display: "flex", flexDirection: "column", gap: 20,
+      background: highlight ? C.primaryBg : "#FFFFFF",
+      border: `1.5px solid ${highlight ? C.primary : C.border}`,
+      borderRadius: 16,
+      padding: "32px 28px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 20,
       position: "relative",
-      boxShadow: highlight ? `0 0 40px rgba(16,185,129,0.15)` : "none",
+      boxShadow: highlight ? "0 4px 24px rgba(22,82,240,0.12)" : "0 1px 4px rgba(0,0,0,0.04)",
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     }}>
       {highlight && (
         <span style={{
-          position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)",
-          background: C.accent, color: "#fff", fontSize: 11, padding: "3px 14px",
+          position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)",
+          background: C.primary, color: "#fff", fontSize: 11, padding: "4px 14px",
           borderRadius: 20, fontWeight: 700, letterSpacing: 0.5,
+          whiteSpace: "nowrap",
         }}>MOST POPULAR</span>
       )}
       <div>
         <p style={{ color: C.muted, margin: "0 0 4px", fontSize: 13, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>{plan}</p>
         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-          <span style={{ fontSize: 40, fontWeight: 800, color: C.white }}>{price}</span>
+          <span style={{ fontSize: 40, fontWeight: 700, color: C.text }}>{price}</span>
           {per && <span style={{ color: C.muted, fontSize: 14 }}>{per}</span>}
         </div>
       </div>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
         {features.map(f => (
-          <li key={f} style={{ display: "flex", gap: 10, alignItems: "flex-start", color: C.muted, fontSize: 14 }}>
-            <span style={{ color: C.accent, marginTop: 1 }}>✓</span> {f}
+          <li key={f} style={{ display: "flex", gap: 10, alignItems: "flex-start", color: C.textMid, fontSize: 14 }}>
+            <span style={{ color: C.accent, marginTop: 1, fontWeight: 700, flexShrink: 0 }}>✓</span> {f}
           </li>
         ))}
       </ul>
@@ -306,9 +388,9 @@ function PricingCard({ plan, price, per, features, cta, highlight, onCta }) {
         onClick={onCta}
         style={{
           ...s.btn,
-          background: highlight ? C.accent : "transparent",
-          color: highlight ? "#fff" : C.accent,
-          border: highlight ? "none" : `1.5px solid ${C.accent}`,
+          background: highlight ? C.primary : "transparent",
+          color: highlight ? "#fff" : C.primary,
+          border: highlight ? "none" : `1.5px solid ${C.primary}`,
           justifyContent: "center",
           marginTop: "auto",
         }}
@@ -331,8 +413,8 @@ const BANKS = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [apiKey, setApiKey]   = useState(null);
-  const [email,  setEmail]    = useState("");
+  const [apiKey, setApiKey]     = useState(null);
+  const [email,  setEmail]      = useState("");
   const [showForm, setShowForm] = useState(false);
 
   function handleSuccess(key, em) {
@@ -352,32 +434,36 @@ export default function LandingPage() {
     document.getElementById("hero-cta")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  const baseFont = { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" };
+
   return (
-    <div style={{ background: C.bg, color: C.white, fontFamily: "system-ui, -apple-system, sans-serif", minHeight: "100vh" }}>
+    <div style={{ background: C.bg, color: C.text, ...baseFont, minHeight: "100vh" }}>
       <Nav onGetKey={scrollToKey} />
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section style={{ padding: "80px 24px 60px", background: `radial-gradient(ellipse 80% 50% at 50% -10%, rgba(16,185,129,0.12) 0%, transparent 70%), ${C.bg}` }}>
+      <section style={{ padding: "80px 24px 72px", background: "#FFFFFF" }}>
         <div style={{ ...s.container, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 60, alignItems: "center" }}>
           <div>
+            {/* badge */}
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 8,
-              background: C.accentBg, border: `1px solid rgba(16,185,129,0.3)`,
+              background: C.primaryBg,
+              border: `1px solid rgba(22,82,240,0.2)`,
               borderRadius: 20, padding: "5px 14px", marginBottom: 24,
             }}>
-              <span style={{ width: 6, height: 6, background: C.accent, borderRadius: "50%", display: "inline-block" }} />
-              <span style={{ color: C.accent, fontSize: 12, fontWeight: 600, letterSpacing: 0.5 }}>20 native parsers + AI fallback</span>
+              <span style={{ width: 6, height: 6, background: C.primary, borderRadius: "50%", display: "inline-block" }} />
+              <span style={{ color: C.primary, fontSize: 12, fontWeight: 600, letterSpacing: 0.3 }}>QuickBooks® Compatible · 20+ Banks Supported</span>
             </div>
 
-            <h1 style={{ fontSize: "clamp(32px, 4vw, 52px)", fontWeight: 900, lineHeight: 1.1, margin: "0 0 12px", letterSpacing: -1 }}>
-              Turn any bank statement PDF into{" "}
-              <span style={{ color: C.accent }}>OFX files for QuickBooks®</span>{" "}
+            <h1 style={{ fontSize: "clamp(30px, 3.8vw, 48px)", fontWeight: 700, lineHeight: 1.15, margin: "0 0 12px", letterSpacing: -0.3, color: C.text }}>
+              Convert bank statement PDFs to{" "}
+              <span style={{ color: C.primary }}>QuickBooks®-ready files</span>{" "}
               in seconds
             </h1>
             <p style={{ fontSize: 11, color: C.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
               QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc.
             </p>
-            <p style={{ fontSize: 17, color: C.muted, margin: "0 0 36px", lineHeight: 1.7, maxWidth: 480 }}>
+            <p style={{ fontSize: 17, color: C.textMid, margin: "0 0 36px", lineHeight: 1.7, maxWidth: 480 }}>
               Upload your PDF, edit every transaction inline, reconcile against real balances, then export.
               The only converter that shows you exactly what it parsed — and lets you fix it before importing into QuickBooks®.
             </p>
@@ -388,11 +474,11 @@ export default function LandingPage() {
               ) : showForm ? (
                 <HeroEmailForm onSuccess={handleSuccess} />
               ) : (
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button onClick={() => setShowForm(true)} style={{ ...s.btn, background: C.accent, color: "#fff", fontSize: 16, padding: "14px 28px" }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <button onClick={() => setShowForm(true)} style={{ ...s.btn, background: C.primary, color: "#fff", fontSize: 16, padding: "14px 28px" }}>
                     Get your free key →
                   </button>
-                  <button onClick={() => navigate("/app?demo=true")} style={{ ...s.btn, background: "transparent", color: C.muted, border: `1.5px solid ${C.border}`, fontSize: 16, padding: "14px 28px" }}>
+                  <button onClick={() => navigate("/app?demo=true")} style={{ ...s.btn, background: "transparent", color: C.textMid, border: `1.5px solid ${C.border}`, fontSize: 16, padding: "14px 28px" }}>
                     Try demo ↗
                   </button>
                 </div>
@@ -408,20 +494,37 @@ export default function LandingPage() {
       </section>
 
       {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
-      <section style={{ padding: "72px 24px", borderTop: `1px solid ${C.border}` }}>
+      <section id="how-it-works" style={{ padding: "80px 24px", background: C.bgAlt, borderTop: `1px solid ${C.border}` }}>
         <div style={s.container}>
-          <p style={{ textAlign: "center", color: C.accent, fontWeight: 700, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>HOW IT WORKS</p>
-          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 48px", letterSpacing: -0.5 }}>Three steps, zero surprises</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 32 }}>
+          <p style={{ textAlign: "center", color: C.primary, fontWeight: 600, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>HOW IT WORKS</p>
+          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3, color: C.text }}>Three steps, zero surprises</h2>
+          <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 56px", lineHeight: 1.6 }}>From PDF to QuickBooks® in under a minute.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 32 }}>
             {[
               { n: "01", title: "Upload your PDF", body: "Drop any bank statement — Chase, Fifth Third, Amex, 20 banks total. Batch upload multiple months at once." },
               { n: "02", title: "Review & edit inline", body: "Every transaction is editable. Fix misreads, split transactions, assign categories, reconcile balances." },
               { n: "03", title: "Download & Import", body: "Download OFX, QFX, or CSV. Import into QuickBooks® Online or your accounting software in two clicks." },
             ].map(({ n, title, body }) => (
-              <div key={n} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <span style={{ fontSize: 40, fontWeight: 900, color: C.accentBg, WebkitTextStroke: `2px ${C.accent}`, fontVariantNumeric: "tabular-nums" }}>{n}</span>
-                <h3 style={{ color: C.white, margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h3>
-                <p style={{ color: C.muted, margin: 0, fontSize: 14, lineHeight: 1.7 }}>{body}</p>
+              <div key={n} style={{
+                background: "#FFFFFF",
+                border: `1px solid ${C.border}`,
+                borderRadius: 14,
+                padding: "28px 28px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+              }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: "50%",
+                  background: C.primaryBg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}>
+                  <span style={{ fontSize: 20, fontWeight: 700, color: C.primary }}>{n}</span>
+                </div>
+                <h3 style={{ color: C.text, margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: -0.2 }}>{title}</h3>
+                <p style={{ color: C.textMid, margin: 0, fontSize: 14, lineHeight: 1.7 }}>{body}</p>
               </div>
             ))}
           </div>
@@ -429,27 +532,27 @@ export default function LandingPage() {
       </section>
 
       {/* ── DIFFERENTIATORS ──────────────────────────────────────────────── */}
-      <section style={{ padding: "72px 24px", borderTop: `1px solid ${C.border}`, background: "rgba(255,255,255,0.015)" }}>
+      <section style={{ padding: "80px 24px", borderTop: `1px solid ${C.border}`, background: "#FFFFFF" }}>
         <div style={s.container}>
-          <p style={{ textAlign: "center", color: C.accent, fontWeight: 700, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>WHY US</p>
-          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>What sets us apart</h2>
+          <p style={{ textAlign: "center", color: C.primary, fontWeight: 600, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>WHY US</p>
+          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3, color: C.text }}>What sets us apart</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 48px" }}>Features our users actually asked for.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24 }}>
             <DiffCard
-              icon="✏️"
-              tag="ONLY US"
+              icon={<IconEdit />}
+              tag="Exclusive"
               title="Edit before you export"
               sub="Inline editing with live balance reconciliation. Fix parser misreads, split one transaction into many, override categories — all before you import. Other converters give you a finished file with no way to review it first."
             />
             <DiffCard
-              icon="⚡"
-              tag="ONLY US"
+              icon={<IconApi />}
+              tag="Exclusive"
               title="API access for bookkeeping firms"
               sub="One API key, unlimited integrations. Connect to Zapier, Make, or your firm's internal tools. Automate statement processing across all your clients without touching the UI."
             />
             <DiffCard
-              icon="🔍"
-              tag="ONLY US"
+              icon={<IconTransparency />}
+              tag="Exclusive"
               title="Full transparency on every parse"
               sub="See exactly what was extracted, line by line. Balance discrepancies flagged in real time. Session auto-saved so you never lose work. No silent failures, no mystery results."
             />
@@ -458,21 +561,23 @@ export default function LandingPage() {
       </section>
 
       {/* ── SUPPORTED BANKS ──────────────────────────────────────────────── */}
-      <section id="banks" style={{ padding: "72px 24px", borderTop: `1px solid ${C.border}` }}>
+      <section id="banks" style={{ padding: "80px 24px", borderTop: `1px solid ${C.border}`, background: C.bgAlt }}>
         <div style={s.container}>
-          <p style={{ textAlign: "center", color: C.accent, fontWeight: 700, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>SUPPORTED BANKS</p>
-          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>20 native parsers</h2>
+          <p style={{ textAlign: "center", color: C.primary, fontWeight: 600, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>SUPPORTED BANKS</p>
+          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3, color: C.text }}>20 native parsers</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 40px" }}>
             Don't see yours? The AI fallback parser handles any layout.{" "}
-            <a href="mailto:support@statably.org?subject=Bank%20parser%20request" style={{ color: C.accent }}>Request a bank →</a>
+            <a href="mailto:support@statably.org?subject=Bank%20parser%20request" style={{ color: C.primary, textDecoration: "none", fontWeight: 500 }}>Request a bank →</a>
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
             {BANKS.map(b => (
               <span key={b} style={{
-                background: C.bgCard, border: `1px solid ${C.border}`,
+                background: "#FFFFFF",
+                border: `1px solid ${C.border}`,
                 borderRadius: 8, padding: "8px 16px",
-                color: b.startsWith("+") ? C.accent : C.muted,
+                color: b.startsWith("+") ? C.primary : C.textMid,
                 fontSize: 13, fontWeight: 500,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
               }}>{b}</span>
             ))}
           </div>
@@ -480,10 +585,10 @@ export default function LandingPage() {
       </section>
 
       {/* ── PRICING ──────────────────────────────────────────────────────── */}
-      <section id="pricing" style={{ padding: "72px 24px", borderTop: `1px solid ${C.border}`, background: "rgba(255,255,255,0.015)" }}>
+      <section id="pricing" style={{ padding: "80px 24px", borderTop: `1px solid ${C.border}`, background: "#FFFFFF" }}>
         <div style={s.container}>
-          <p style={{ textAlign: "center", color: C.accent, fontWeight: 700, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>PRICING</p>
-          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 800, margin: "0 0 8px", letterSpacing: -0.5 }}>Simple, honest pricing</h2>
+          <p style={{ textAlign: "center", color: C.primary, fontWeight: 600, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 12px" }}>PRICING</p>
+          <h2 style={{ textAlign: "center", fontSize: 32, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.3, color: C.text }}>Simple, honest pricing</h2>
           <p style={{ textAlign: "center", color: C.muted, fontSize: 16, margin: "0 0 48px" }}>
             Start free — upgrade when you need more volume.
           </p>
@@ -535,12 +640,12 @@ export default function LandingPage() {
       </section>
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
-      <section style={{ padding: "80px 24px", borderTop: `1px solid ${C.border}` }}>
+      <section style={{ padding: "80px 24px", background: C.primaryBg, borderTop: `1px solid rgba(22,82,240,0.12)` }}>
         <div style={{ ...s.container, textAlign: "center" }}>
-          <h2 style={{ fontSize: "clamp(26px, 3.5vw, 40px)", fontWeight: 900, margin: "0 0 16px", letterSpacing: -0.5 }}>
+          <h2 style={{ fontSize: "clamp(26px, 3.5vw, 40px)", fontWeight: 700, margin: "0 0 16px", letterSpacing: -0.3, color: C.text }}>
             Ready to stop downloading files<br />and start just importing?
           </h2>
-          <p style={{ color: C.muted, fontSize: 16, margin: "0 0 36px" }}>
+          <p style={{ color: C.textMid, fontSize: 16, margin: "0 0 36px", lineHeight: 1.6 }}>
             Takes 60 seconds. No credit card. Cancel anytime.
           </p>
           {apiKey ? (
@@ -548,16 +653,19 @@ export default function LandingPage() {
               <KeySuccess apiKey={apiKey} email={email} onGoToApp={goToApp} />
             </div>
           ) : (
-            <HeroEmailForm onSuccess={handleSuccess} />
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <HeroEmailForm onSuccess={handleSuccess} />
+            </div>
           )}
         </div>
       </section>
 
       {/* ── FOOTER ───────────────────────────────────────────────────────── */}
-      <footer style={{ borderTop: `1px solid ${C.border}`, padding: "32px 24px" }}>
+      <footer style={{ background: "#F9FAFB", borderTop: `1px solid ${C.border}`, padding: "32px 24px" }}>
         <div style={{ ...s.container, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-          <span style={{ color: C.muted, fontSize: 14 }}>
-            <span style={{ color: C.accent, fontWeight: 800 }}>Stat</span>ably · Built for accountants
+          <span style={{ color: C.text, fontSize: 15, fontWeight: 700 }}>
+            <span style={{ color: C.primary }}>Stat</span>ably
+            <span style={{ color: C.muted, fontWeight: 400, marginLeft: 8 }}>· Built for accountants</span>
           </span>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
             {[
@@ -570,13 +678,13 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-        <div style={{ ...s.container, marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
-          <p style={{ color: C.muted, fontSize: 11, margin: 0, lineHeight: 1.6 }}>
+        <div style={{ ...s.container, marginTop: 20, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+          <p style={{ color: C.muted, fontSize: 11, margin: 0, lineHeight: 1.7 }}>
             QuickBooks® is a registered trademark of Intuit Inc. Statably is not affiliated with or endorsed by Intuit Inc.
             Statably exports files in open OFX/QFX/CSV formats that are compatible with QuickBooks® and other accounting software.
           </p>
-          <p style={{ color: C.muted, fontSize: 11, margin: "8px 0 0", lineHeight: 1.6 }}>
-            Your API key is stored in your browser's <code>localStorage</code> for convenience. It never leaves your device to third parties.
+          <p style={{ color: C.muted, fontSize: 11, margin: "8px 0 0", lineHeight: 1.7 }}>
+            Your API key is stored in your browser's <code style={{ fontFamily: "ui-monospace, 'SF Mono', monospace" }}>localStorage</code> for convenience. It never leaves your device to third parties.
             You can clear it at any time in your browser settings. See our <a href="/privacy" style={{ color: C.muted }}>Privacy Policy</a> for details.
           </p>
         </div>
