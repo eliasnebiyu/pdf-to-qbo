@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 /* ─── palette ─────────────────────────────────────────────────────────────── */
@@ -95,25 +95,67 @@ function Nav({ onGetKey }) {
 }
 
 function HeroEmailForm({ onSuccess }) {
-  const [email, setEmail]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [email, setEmail]           = useState("");
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+  const [siteKey, setSiteKey]       = useState("");
+  const [tsToken, setTsToken]       = useState(null);
+  const tsRef    = useRef(null);
+  const tsWidget = useRef(null);
+
+  // Fetch Turnstile site key once
+  useEffect(() => {
+    fetch("/api/config").then(r => r.json()).then(d => {
+      if (d.turnstile_site_key) setSiteKey(d.turnstile_site_key);
+    }).catch(() => {});
+  }, []);
+
+  // Load + render Turnstile widget when site key is available
+  useEffect(() => {
+    if (!siteKey) return;
+    const render = () => {
+      if (!tsRef.current || !window.turnstile) return;
+      if (tsWidget.current != null) { window.turnstile.remove(tsWidget.current); tsWidget.current = null; }
+      tsWidget.current = window.turnstile.render(tsRef.current, {
+        sitekey: siteKey,
+        callback:           token => setTsToken(token),
+        "expired-callback": ()    => setTsToken(null),
+        "error-callback":   ()    => setTsToken(null),
+      });
+    };
+    if (window.turnstile) {
+      render();
+    } else if (!document.querySelector('script[src*="turnstile"]')) {
+      const s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+      s.async = true;
+      s.onload = render;
+      document.head.appendChild(s);
+    } else {
+      const interval = setInterval(() => { if (window.turnstile) { clearInterval(interval); render(); } }, 100);
+      return () => clearInterval(interval);
+    }
+    return () => { if (tsWidget.current != null && window.turnstile) { window.turnstile.remove(tsWidget.current); tsWidget.current = null; } };
+  }, [siteKey]);
 
   async function submit(e) {
     e.preventDefault();
+    if (siteKey && !tsToken) { setError("Please complete the bot protection check."); return; }
     setLoading(true);
     setError("");
     try {
       const res  = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, turnstile_token: tsToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Registration failed");
       onSuccess(data.api_key, email);
     } catch (err) {
       setError(err.message);
+      if (tsWidget.current != null && window.turnstile) window.turnstile.reset(tsWidget.current);
+      setTsToken(null);
     } finally {
       setLoading(false);
     }
@@ -127,7 +169,7 @@ function HeroEmailForm({ onSuccess }) {
           required
           placeholder="you@yourfirm.com"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={e => { setEmail(e.target.value); setError(""); }}
           style={{
             flex: 1, minWidth: 200,
             padding: "13px 16px",
@@ -153,6 +195,7 @@ function HeroEmailForm({ onSuccess }) {
           {loading ? "Sending…" : "Get free key →"}
         </button>
       </div>
+      {siteKey && <div ref={tsRef} style={{ margin: "4px 0" }} />}
       {error && <p style={{ color: "#DC2626", fontSize: 13, margin: 0 }}>{error}</p>}
       {/* Trust signals */}
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 4 }}>
