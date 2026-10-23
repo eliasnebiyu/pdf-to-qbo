@@ -141,6 +141,13 @@ class FifthThirdParser(BaseParser):
         if not txns:
             txns = self._parse_pypdf_consumer(self._pypdf_text())
 
+        # Strategy 5: micro-statement / compact check format
+        # Fifth Third single-page statements with very few transactions embed
+        # checks inline as: "MM/DD/YYYY CHECKNUM $AMOUNT" (multiple per line).
+        # Example: "3/20/2025 1086 $1,996.88 3/7/2025 1087 $172.98"
+        if not txns:
+            txns = self._parse_compact_checks(self.full_text)
+
         txns = clean(txns, warn=self.warn)
 
         if not txns:
@@ -587,6 +594,48 @@ class FifthThirdParser(BaseParser):
         if dep_m:
             dep_blob = _clean_blob(text[dep_pos:end_pos])
             txns.extend(_txns_from_blob(dep_blob, debit=False))
+
+        return txns
+
+    # ── Strategy 5: compact micro-statement check format ─────────────────────
+
+    def _parse_compact_checks(self, text: str) -> list[Transaction]:
+        """
+        Parse the compact check format used in single-page Fifth Third statements
+        where all transactions appear inline in the document header area.
+
+        Format (multiple checks may appear on one line):
+            MM/DD/YYYY CHECKNUM $AMOUNT  MM/DD/YYYY CHECKNUM $AMOUNT ...
+
+        All are treated as debits (check payments).
+        """
+        # Pattern: date, optional check number, dollar amount
+        _COMPACT = re.compile(
+            r"(\d{1,2}/\d{1,2}/\d{4})\s+"   # date  MM/DD/YYYY
+            r"(\d{3,6})\s+"                   # check number
+            r"\$(\d{1,3}(?:,\d{3})*\.\d{2})" # $amount
+        )
+        txns: list[Transaction] = []
+        seen: set[str] = set()
+
+        for m in _COMPACT.finditer(text):
+            raw_date, check_num, raw_amt = m.group(1), m.group(2), m.group(3)
+            key = f"{raw_date}|{check_num}|{raw_amt}"
+            if key in seen:
+                continue
+            seen.add(key)
+            tx_date = parse_date(raw_date)
+            amount  = parse_amount(raw_amt)
+            if not tx_date or amount is None:
+                continue
+            try:
+                txns.append(Transaction(
+                    date=tx_date,
+                    description=f"Check #{check_num}",
+                    amount=-abs(amount),  # checks are always debits
+                ))
+            except Exception as e:
+                self.warn(f"5/3 compact check parse error: {e}")
 
         return txns
 

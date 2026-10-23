@@ -40,6 +40,10 @@ frontend/node_modules/
 *.qbo
 *.csv
 
+# Test fixtures — PDFs never committed (real or demo statements)
+tests/fixtures/real/
+tests/fixtures/demo/
+
 # SQLite database (API keys + usage — never commit)
 data/
 *.db
