@@ -1,8 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Dark background -->
-  <rect width="32" height="32" rx="8" fill="#0b1120"/>
-  <!-- Green "S" lettermark -->
-  <text x="5" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="900" fill="#10b981">S</text>
-  <!-- Small green dot accent -->
-  <circle cx="26" cy="10" r="3" fill="#10b981"/>
+  <!-- Primary blue background -->
+  <rect width="32" height="32" rx="7" fill="#1652F0"/>
+
+  <!-- Three ledger bars forming S shape -->
+  <!-- Top bar (right-anchored) -->
+  <rect x="9" y="8" width="13" height="4" rx="2" fill="white"/>
+  <!-- Middle bar (full) -->
+  <rect x="9" y="14" width="13" height="4" rx="2" fill="white" opacity="0.55"/>
+  <!-- Bottom bar (left-anchored) -->
+  <rect x="9" y="20" width="13" height="4" rx="2" fill="white"/>
+
+  <!-- Mask left of top bar -->
+  <rect x="9" y="8" width="4" height="4" fill="#1652F0"/>
+  <!-- Mask right of bottom bar -->
+  <rect x="18" y="20" width="4" height="4" fill="#1652F0"/>
+
+  <!-- Green accent dot -->
+  <circle cx="24" cy="9" r="3" fill="#0AAF60"/>
 </svg>
