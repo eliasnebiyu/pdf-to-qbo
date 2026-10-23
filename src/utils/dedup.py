@@ -60,7 +60,17 @@ _COMPILED_HEADERS = [re.compile(p, re.I) for p in _HEADER_PATTERNS]
 def _is_header_row(tx: Transaction) -> bool:
     """Return True if this transaction looks like a misread header row."""
     desc = (tx.description or "").strip()
-    return any(p.match(desc) for p in _COMPILED_HEADERS)
+    if not any(p.match(desc) for p in _COMPILED_HEADERS):
+        return False
+    # A row with a non-zero amount is almost certainly a real transaction,
+    # even if its description matches a generic column header like "Deposit".
+    try:
+        from decimal import Decimal
+        if tx.amount and tx.amount != Decimal(0):
+            return False
+    except Exception:
+        pass
+    return True
 
 
 # ── Deduplication key ─────────────────────────────────────────────────────────
